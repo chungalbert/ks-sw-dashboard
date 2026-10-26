@@ -789,9 +789,12 @@ export const localApi = {
   /** Shared notes — full list for every member (no owner filter). */
   listNotes(): NoteItem[] {
     const notes = load().notes ?? [];
+    // Stable order: pinned first, then created_at (not updated_at — edits must not reshuffle).
     return [...notes].sort((a, b) => {
       if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
-      return b.updated_at.localeCompare(a.updated_at);
+      const byCreated = (b.created_at ?? "").localeCompare(a.created_at ?? "");
+      if (byCreated !== 0) return byCreated;
+      return a.id.localeCompare(b.id);
     });
   },
 
