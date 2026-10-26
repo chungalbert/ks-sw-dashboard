@@ -46,7 +46,7 @@ export function appVersionFromPr(pr: number): string {
  * App version for the landing/sidebar footer. Bump to `appVersionFromPr(<this PR#>)`
  * when that feature PR lands (see preferences.md).
  */
-export const APP_VERSION = appVersionFromPr(104);
+export const APP_VERSION = appVersionFromPr(105);
 
 /**
  * Author + version label for landing footer and logged-in sidebar credit.
