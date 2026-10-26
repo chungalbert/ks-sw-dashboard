@@ -2992,6 +2992,13 @@ th { color: var(--muted); font-weight: 500; font-size: 12px; }
   flex-wrap: wrap;
 }
 
+.pi-checkpoint-footer-left {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
 .pi-checkpoint-footer-actions {
   display: flex;
   gap: 8px;

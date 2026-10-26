@@ -651,6 +651,24 @@ export function ProjectsIssuesPage({
     setCheckpointAddOpen(true);
   };
 
+  /** Reset local draft to Compal handover template (persists only on Save). */
+  const onLoadDefaultCheckpoints = () => {
+    if (!checkpointProjectId || !canEditCheckpoints(checkpointProjectId)) return;
+    const hasContent =
+      checkpointDraft.length > 0 || Boolean(checkpointHandoverDate.trim());
+    if (
+      hasContent &&
+      !window.confirm("Replace current CheckPoint draft with the default template?")
+    ) {
+      return;
+    }
+    setCheckpointDraft(buildDefaultCheckpointTemplate());
+    setCheckpointCollapsed({});
+    setCheckpointOrderLocked(false);
+    resetCheckpointAddDialog();
+    markCheckpointDirty();
+  };
+
   const onConfirmAddCheckpoint = () => {
     if (!checkpointProjectId || !canEditCheckpoints(checkpointProjectId)) return;
     const typeName =
@@ -1808,14 +1826,25 @@ export function ProjectsIssuesPage({
 
                 {canEdit ? (
                   <div className="pi-checkpoint-footer">
-                    <button
-                      type="button"
-                      className="pi-btn-primary"
-                      disabled={cpBusy}
-                      onClick={() => onOpenAddCheckpoint()}
-                    >
-                      + Add row
-                    </button>
+                    <div className="pi-checkpoint-footer-left">
+                      <button
+                        type="button"
+                        className="pi-btn-primary"
+                        disabled={cpBusy}
+                        onClick={() => onOpenAddCheckpoint()}
+                      >
+                        + Add row
+                      </button>
+                      <button
+                        type="button"
+                        className="pi-btn-ghost"
+                        disabled={cpBusy}
+                        title="Load Compal default handover template into draft"
+                        onClick={() => onLoadDefaultCheckpoints()}
+                      >
+                        Default
+                      </button>
+                    </div>
                     <div className="pi-checkpoint-footer-actions">
                       <button
                         type="button"
