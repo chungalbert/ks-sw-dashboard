@@ -4,10 +4,15 @@ import { api } from "../lib/api";
 import {
   isTaskOpen,
   normalizePersonnelRole,
+  normalizeTaskStatus,
   PERSONNEL_ROLES,
+  TASK_STATUSES,
+  taskStatusLabel,
   type PersonnelColumn,
   type PersonnelRole,
   type Profile,
+  type Task,
+  type TaskStatus,
 } from "../lib/types";
 import { useAuth } from "../context/AuthContext";
 import { useStore } from "../context/StoreContext";
@@ -35,7 +40,23 @@ function avatarTone(name: string): string {
   return tones[hash];
 }
 
-export function PeoplePage({ onGoDashboard }: { onGoDashboard?: () => void }) {
+function possessiveName(name: string): string {
+  const trimmed = name.trim() || "Member";
+  return /s$/i.test(trimmed) ? `${trimmed}'` : `${trimmed}'s`;
+}
+
+function shortIssueId(id: string): string {
+  return id.replace(/-/g, "").slice(0, 8).toUpperCase();
+}
+
+export function PeoplePage({
+  onGoDashboard,
+  onOpenProject,
+}: {
+  onGoDashboard?: () => void;
+  /** Navigate to Projects & Issues detail for this project. */
+  onOpenProject?: (projectId: string) => void;
+}) {
   const { user } = useAuth();
   const { profiles, allMembers, allTasks, projects, reload } = useStore();
   const isAdmin = Boolean(user && normalizePersonnelRole(user) === "Admin");
@@ -56,6 +77,7 @@ export function PeoplePage({ onGoDashboard }: { onGoDashboard?: () => void }) {
     projectIds: [] as string[],
   });
   const [projectPickerId, setProjectPickerId] = useState<string | null>(null);
+  const [issuesProfileId, setIssuesProfileId] = useState<string | null>(null);
 
   const refreshColumns = async () => {
     setColumns(await api.listPersonnelColumns());
@@ -69,6 +91,7 @@ export function PeoplePage({ onGoDashboard }: { onGoDashboard?: () => void }) {
     if (!isAdmin) {
       setMemberOpen(false);
       setMemberBusy(false);
+      setAddOpen(false);
     }
   }, [isAdmin]);
 
@@ -94,6 +117,14 @@ export function PeoplePage({ onGoDashboard }: { onGoDashboard?: () => void }) {
       };
     });
   }, [profiles, allMembers, allTasks, projects]);
+
+  const issuesProfile = issuesProfileId
+    ? profiles.find((p) => p.id === issuesProfileId) ?? null
+    : null;
+  const issuesForModal = useMemo(() => {
+    if (!issuesProfileId) return [] as Task[];
+    return allTasks.filter((t) => t.assignee_id === issuesProfileId && isTaskOpen(t.status));
+  }, [allTasks, issuesProfileId]);
 
   const patchProfile = async (
     userId: string,
@@ -130,6 +161,11 @@ export function PeoplePage({ onGoDashboard }: { onGoDashboard?: () => void }) {
 
   const onAddColumn = async (event: FormEvent) => {
     event.preventDefault();
+    if (!isAdmin) {
+      setError("只有 Admin 可以新增欄位");
+      setAddOpen(false);
+      return;
+    }
     setError("");
     try {
       await runSave(async () => {
@@ -185,6 +221,7 @@ export function PeoplePage({ onGoDashboard }: { onGoDashboard?: () => void }) {
   };
 
   const onRemoveColumn = async (columnId: string, label: string) => {
+    if (!isAdmin) return;
     const ok = window.confirm(`Remove column “${label}”? Values will be deleted.`);
     if (!ok) return;
     setError("");
@@ -200,6 +237,7 @@ export function PeoplePage({ onGoDashboard }: { onGoDashboard?: () => void }) {
   };
 
   const resetPassword = async (userId: string, name: string) => {
+    if (!isAdmin) return;
     const ok = window.confirm(`Reset password for “${name}” to ${DEFAULT_PASSWORD}?`);
     if (!ok) return;
     setError("");
@@ -216,6 +254,7 @@ export function PeoplePage({ onGoDashboard }: { onGoDashboard?: () => void }) {
   };
 
   const deletePerson = async (userId: string, name: string) => {
+    if (!isAdmin) return;
     const ok = window.confirm(`Delete “${name}”? This removes the account from all projects.`);
     if (!ok) return;
     setError("");
@@ -232,7 +271,7 @@ export function PeoplePage({ onGoDashboard }: { onGoDashboard?: () => void }) {
     }
   };
 
-  const colSpan = 7 + columns.length;
+  const colSpan = (isAdmin ? 7 : 6) + columns.length;
 
   return (
     <div className="personnel-page">
@@ -270,40 +309,42 @@ export function PeoplePage({ onGoDashboard }: { onGoDashboard?: () => void }) {
               + ADD MEMBER
             </button>
           )}
-          <div className="personnel-add-wrap">
-            <button
-              type="button"
-              className="personnel-add-col"
-              aria-expanded={addOpen}
-              onClick={() => {
-                setMemberOpen(false);
-                setAddOpen((v) => !v);
-              }}
-            >
-              + ADD COLUMN
-            </button>
-            {addOpen && (
-              <form className="personnel-add-popover" onSubmit={onAddColumn}>
-                <label>
-                  Column name
-                  <input
-                    value={newColLabel}
-                    onChange={(e) => setNewColLabel(e.target.value)}
-                    placeholder="e.g. Team"
-                    autoFocus
-                  />
-                </label>
-                <div className="personnel-add-actions">
-                  <button type="button" className="personnel-btn-ghost" onClick={() => setAddOpen(false)}>
-                    Cancel
-                  </button>
-                  <button type="submit" className="personnel-btn-primary" disabled={!newColLabel.trim()}>
-                    Add
-                  </button>
-                </div>
-              </form>
-            )}
-          </div>
+          {isAdmin && (
+            <div className="personnel-add-wrap">
+              <button
+                type="button"
+                className="personnel-add-col"
+                aria-expanded={addOpen}
+                onClick={() => {
+                  setMemberOpen(false);
+                  setAddOpen((v) => !v);
+                }}
+              >
+                + ADD COLUMN
+              </button>
+              {addOpen && (
+                <form className="personnel-add-popover" onSubmit={onAddColumn}>
+                  <label>
+                    Column name
+                    <input
+                      value={newColLabel}
+                      onChange={(e) => setNewColLabel(e.target.value)}
+                      placeholder="e.g. Team"
+                      autoFocus
+                    />
+                  </label>
+                  <div className="personnel-add-actions">
+                    <button type="button" className="personnel-btn-ghost" onClick={() => setAddOpen(false)}>
+                      Cancel
+                    </button>
+                    <button type="submit" className="personnel-btn-primary" disabled={!newColLabel.trim()}>
+                      Add
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
+          )}
         </div>
       </header>
 
@@ -450,19 +491,21 @@ export function PeoplePage({ onGoDashboard }: { onGoDashboard?: () => void }) {
                 <th key={col.id}>
                   <span className="personnel-col-head">
                     {col.label.toUpperCase()}
-                    <button
-                      type="button"
-                      className="personnel-col-remove"
-                      title={`Remove ${col.label}`}
-                      onClick={() => void onRemoveColumn(col.id, col.label)}
-                    >
-                      ×
-                    </button>
+                    {isAdmin && (
+                      <button
+                        type="button"
+                        className="personnel-col-remove"
+                        title={`Remove ${col.label}`}
+                        onClick={() => void onRemoveColumn(col.id, col.label)}
+                      >
+                        ×
+                      </button>
+                    )}
                   </span>
                 </th>
               ))}
               <th>ISSUES</th>
-              <th>ACTIONS</th>
+              {isAdmin && <th>ACTIONS</th>}
             </tr>
           </thead>
           <tbody>
@@ -483,6 +526,7 @@ export function PeoplePage({ onGoDashboard }: { onGoDashboard?: () => void }) {
                   columns={columns}
                   projects={projects}
                   busy={busyId === profile.id}
+                  isAdmin={isAdmin}
                   pickerOpen={projectPickerId === profile.id}
                   onTogglePicker={() =>
                     setProjectPickerId((id) => (id === profile.id ? null : profile.id))
@@ -490,6 +534,7 @@ export function PeoplePage({ onGoDashboard }: { onGoDashboard?: () => void }) {
                   onClosePicker={() => setProjectPickerId(null)}
                   onPatch={(patch) => void patchProfile(profile.id, patch)}
                   onSetProjects={(ids) => void setProjects(profile.id, ids)}
+                  onOpenIssues={() => setIssuesProfileId(profile.id)}
                   onReset={() => void resetPassword(profile.id, profile.display_name)}
                   onDelete={() => void deletePerson(profile.id, profile.display_name)}
                 />
@@ -498,6 +543,19 @@ export function PeoplePage({ onGoDashboard }: { onGoDashboard?: () => void }) {
           </tbody>
         </table>
       </div>
+
+      {issuesProfile && (
+        <MemberIssuesModal
+          profile={issuesProfile}
+          tasks={issuesForModal}
+          projects={projects}
+          onClose={() => setIssuesProfileId(null)}
+          onOpenProject={(projectId) => {
+            setIssuesProfileId(null);
+            onOpenProject?.(projectId);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -512,11 +570,13 @@ function PersonRow({
   columns,
   projects,
   busy,
+  isAdmin,
   pickerOpen,
   onTogglePicker,
   onClosePicker,
   onPatch,
   onSetProjects,
+  onOpenIssues,
   onReset,
   onDelete,
 }: {
@@ -529,11 +589,13 @@ function PersonRow({
   columns: PersonnelColumn[];
   projects: { id: string; name: string }[];
   busy: boolean;
+  isAdmin: boolean;
   pickerOpen: boolean;
   onTogglePicker: () => void;
   onClosePicker: () => void;
   onPatch: (patch: Parameters<typeof api.updateProfile>[1]) => void;
   onSetProjects: (ids: string[]) => void;
+  onOpenIssues: () => void;
   onReset: () => void;
   onDelete: () => void;
 }) {
@@ -718,24 +780,213 @@ function PersonRow({
         </td>
       ))}
       <td>
-        <span
+        <button
+          type="button"
           className={`personnel-issue-badge${
             issues === 0 ? " zero" : issues >= 5 ? " high" : " mid"
           }`}
+          title={`${profile.display_name}'s open issues`}
+          aria-label={`Open ${profile.display_name}'s issues (${issues})`}
+          onClick={onOpenIssues}
         >
           {issues}
-        </span>
+        </button>
       </td>
-      <td>
-        <div className="personnel-actions">
-          <button type="button" className="personnel-link" disabled={busy} onClick={onReset}>
-            Reset pw
-          </button>
-          <button type="button" className="personnel-link danger" disabled={busy} onClick={onDelete}>
-            Delete
-          </button>
-        </div>
-      </td>
+      {isAdmin && (
+        <td>
+          <div className="personnel-actions">
+            <button type="button" className="personnel-link" disabled={busy} onClick={onReset}>
+              Reset pw
+            </button>
+            <button type="button" className="personnel-link danger" disabled={busy} onClick={onDelete}>
+              Delete
+            </button>
+          </div>
+        </td>
+      )}
     </tr>
+  );
+}
+
+function MemberIssuesModal({
+  profile,
+  tasks,
+  projects,
+  onClose,
+  onOpenProject,
+}: {
+  profile: Profile;
+  tasks: Task[];
+  projects: { id: string; name: string }[];
+  onClose: () => void;
+  onOpenProject: (projectId: string) => void;
+}) {
+  const [projectFilter, setProjectFilter] = useState<string>("all");
+
+  const projectOptions = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const task of tasks) {
+      counts.set(task.project_id, (counts.get(task.project_id) ?? 0) + 1);
+    }
+    return [...counts.entries()]
+      .map(([id, count]) => ({
+        id,
+        name: projects.find((p) => p.id === id)?.name ?? id.slice(0, 8),
+        count,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [tasks, projects]);
+
+  const filtered = useMemo(
+    () => (projectFilter === "all" ? tasks : tasks.filter((t) => t.project_id === projectFilter)),
+    [tasks, projectFilter],
+  );
+
+  const statusCounts = useMemo(() => {
+    const counts: Record<TaskStatus, number> = {
+      opening: 0,
+      working: 0,
+      closing: 0,
+      verify: 0,
+    };
+    for (const task of filtered) {
+      counts[normalizeTaskStatus(task.status)] += 1;
+    }
+    return counts;
+  }, [filtered]);
+
+  const totalOpen = filtered.length;
+  const maxBar = Math.max(1, ...TASK_STATUSES.map((s) => statusCounts[s.id]));
+  const filterLabel =
+    projectFilter === "all"
+      ? "All projects"
+      : projectOptions.find((p) => p.id === projectFilter)?.name ?? "Project";
+
+  return (
+    <div className="personnel-modal-backdrop" role="presentation" onClick={onClose}>
+      <div
+        className="personnel-issues-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="personnel-issues-title"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <header className="personnel-issues-head">
+          <div className="personnel-issues-identity">
+            <span className={`personnel-avatar ${avatarTone(profile.display_name)}`} aria-hidden="true">
+              {initials(profile.display_name)}
+            </span>
+            <div>
+              <h2 id="personnel-issues-title">{possessiveName(profile.display_name)} Issues</h2>
+              <p className="personnel-issues-sub">
+                {totalOpen} ISSUE{totalOpen === 1 ? "" : "S"}
+                {projectFilter !== "all" ? ` · ${filterLabel}` : ""}
+              </p>
+            </div>
+          </div>
+          <button type="button" className="personnel-modal-close" aria-label="Close" onClick={onClose}>
+            ×
+          </button>
+        </header>
+
+        <div className="personnel-issues-grid">
+          <section className="personnel-issues-list-panel" aria-label="Open issue list">
+            <div className="personnel-issues-list-head">
+              <div>
+                <h3>OPEN ISSUE LIST</h3>
+                <p className="personnel-issues-hint">Click an issue to open project detail</p>
+              </div>
+              <label className="personnel-issues-filter">
+                <span className="sr-only">Filter by project</span>
+                <select
+                  value={projectFilter}
+                  onChange={(e) => setProjectFilter(e.target.value)}
+                  aria-label="Filter by project"
+                >
+                  <option value="all">All projects ({tasks.length})</option>
+                  {projectOptions.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} ({p.count})
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            {filtered.length === 0 ? (
+              <p className="personnel-issues-empty">No open issues.</p>
+            ) : (
+              <ul className="personnel-issues-cards">
+                {filtered.map((task) => {
+                  const projectName =
+                    projects.find((p) => p.id === task.project_id)?.name ?? "Project";
+                  const status = normalizeTaskStatus(task.status);
+                  return (
+                    <li key={task.id}>
+                      <button
+                        type="button"
+                        className="personnel-issue-card"
+                        onClick={() => onOpenProject(task.project_id)}
+                      >
+                        <div className="personnel-issue-card-top">
+                          <span className={`personnel-issue-dot status-${status}`} aria-hidden="true" />
+                          <span className="personnel-issue-id">{shortIssueId(task.id)}</span>
+                          <span className={`personnel-issue-status status-${status}`}>
+                            {taskStatusLabel(status).toUpperCase()}
+                          </span>
+                        </div>
+                        <p className="personnel-issue-title">{task.title}</p>
+                        <div className="personnel-issue-tags">
+                          <span className="personnel-issue-tag project">{projectName}</span>
+                        </div>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            <p className="personnel-issues-showing">
+              Showing {filtered.length} of {tasks.length} issue{tasks.length === 1 ? "" : "s"}
+            </p>
+          </section>
+
+          <aside className="personnel-issues-stats" aria-label="Status histogram">
+            <h3>STATUS HISTOGRAM</h3>
+            <ul className="personnel-issues-histogram">
+              {TASK_STATUSES.map((status) => {
+                const count = statusCounts[status.id];
+                const width = Math.round((count / maxBar) * 100);
+                return (
+                  <li key={status.id}>
+                    <div className="personnel-hist-row">
+                      <span className={`personnel-hist-label status-${status.id}`}>
+                        {status.label.toUpperCase()}
+                      </span>
+                      <span className="personnel-hist-count">{count}</span>
+                    </div>
+                    <div className="personnel-hist-track" aria-hidden="true">
+                      <span
+                        className={`personnel-hist-fill status-${status.id}`}
+                        style={{ width: `${width}%` }}
+                      />
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+            <div className="personnel-issues-total">
+              <span>TOTAL OPEN ISSUES</span>
+              <strong>{totalOpen}</strong>
+            </div>
+          </aside>
+        </div>
+
+        <footer className="personnel-issues-footer">
+          <button type="button" className="personnel-btn-ghost" onClick={onClose}>
+            Close
+          </button>
+        </footer>
+      </div>
+    </div>
   );
 }
