@@ -14,9 +14,21 @@ export type NoteInput = {
   url?: string;
 };
 
+/**
+ * Stable display order: pinned first, then created_at (newest created first), then id.
+ * Must NOT use updated_at — content edits must leave position unchanged.
+ */
+export function compareNotesStable(a: NoteItem, b: NoteItem): number {
+  if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+  const byCreated = (b.created_at ?? "").localeCompare(a.created_at ?? "");
+  if (byCreated !== 0) return byCreated;
+  return a.id.localeCompare(b.id);
+}
+
 export const notesStore = {
   async list(): Promise<NoteItem[]> {
-    return api.listNotes();
+    const notes = await api.listNotes();
+    return [...notes].sort(compareNotesStable);
   },
 
   async create(input: NoteInput): Promise<NoteItem> {

@@ -1134,7 +1134,13 @@ export const cloudApi = {
   },
 
   async listNotes(): Promise<NoteItem[]> {
-    const { data, error } = await sb().from("shared_notes").select("*").order("updated_at", { ascending: false });
+    // Stable order: pinned first, then created_at (not updated_at — edits must not reshuffle).
+    const { data, error } = await sb()
+      .from("shared_notes")
+      .select("*")
+      .order("pinned", { ascending: false })
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: true });
     if (error) throw error;
     return (data ?? []).map((row) => ({
       id: row.id as string,
