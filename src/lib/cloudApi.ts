@@ -5,6 +5,7 @@ import {
   findStandardProjectColumn,
   isReservedProjectColumnLabel,
   isStandardProjectColumnId,
+  PROJECT_OMITTED_DEFAULT_IDS,
   seedStandardProjectColumns,
   type ProjectFieldPatch,
 } from "./projectsUiStore";
@@ -178,11 +179,17 @@ export const PROJECT_COLUMNS_META_NAME = "__kssw_meta__";
 const PROJECT_COLUMNS_DEFS_KEY = "__kssw_column_defs";
 /** Set after one-time seed of former builtin middle columns into meta defs. */
 const PROJECT_COLUMNS_SEEDED_KEY = "__kssw_columns_seeded";
+/** One-time drop of DIS + TALENT POLICY from shared meta (re-addable afterward). */
+const PROJECT_OMIT_DIS_TALENT_KEY = "__kssw_omit_dis_talent_v1";
 
 type StoredProjectColumn = ProjectColumn & { sort_order: number };
 
-function metaSeededFlag(custom: Record<string, string> | undefined): boolean {
-  return custom?.[PROJECT_COLUMNS_SEEDED_KEY] === "1";
+function metaSeededFlag(custom: Record<string, unknown> | undefined): boolean {
+  return String(custom?.[PROJECT_COLUMNS_SEEDED_KEY] ?? "") === "1";
+}
+
+function metaOmitDisTalentDone(custom: Record<string, unknown> | undefined): boolean {
+  return String(custom?.[PROJECT_OMIT_DIS_TALENT_KEY] ?? "") === "1";
 }
 
 function withSortOrder(columns: ProjectColumn[]): StoredProjectColumn[] {
@@ -230,29 +237,46 @@ function normalizeProjectRow(row: Project): Project {
   };
 }
 
-function parseStoredProjectColumns(raw: string | undefined): StoredProjectColumn[] {
-  if (!raw?.trim()) return [];
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .map((item, index) => {
-        if (!item || typeof item !== "object") return null;
-        const row = item as { id?: unknown; label?: unknown; sort_order?: unknown };
-        const id = typeof row.id === "string" ? row.id.trim() : "";
-        const label = typeof row.label === "string" ? row.label.trim() : "";
-        if (!id || !label) return null;
-        const sort_order = Number(row.sort_order);
-        return {
-          id,
-          label,
-          sort_order: Number.isFinite(sort_order) ? sort_order : index,
-        };
-      })
-      .filter((row): row is StoredProjectColumn => Boolean(row));
-  } catch {
-    return [];
+/**
+ * Meta column defs may be a JSON string, a double-encoded string, or a jsonb array
+ * already parsed by PostgREST. Empty / unreadable → [].
+ */
+function parseStoredProjectColumns(raw: unknown): StoredProjectColumn[] {
+  if (raw == null) return [];
+  let parsed: unknown = raw;
+  if (typeof parsed === "string") {
+    const trimmed = parsed.trim();
+    if (!trimmed) return [];
+    try {
+      parsed = JSON.parse(trimmed) as unknown;
+    } catch {
+      return [];
+    }
+    // Double-encoded: JSON string of a JSON array.
+    if (typeof parsed === "string") {
+      try {
+        parsed = JSON.parse(parsed) as unknown;
+      } catch {
+        return [];
+      }
+    }
   }
+  if (!Array.isArray(parsed)) return [];
+  return parsed
+    .map((item, index) => {
+      if (!item || typeof item !== "object") return null;
+      const row = item as { id?: unknown; label?: unknown; sort_order?: unknown };
+      const id = typeof row.id === "string" ? row.id.trim() : "";
+      const label = typeof row.label === "string" ? row.label.trim() : "";
+      if (!id || !label) return null;
+      const sort_order = Number(row.sort_order);
+      return {
+        id,
+        label,
+        sort_order: Number.isFinite(sort_order) ? sort_order : index,
+      };
+    })
+    .filter((row): row is StoredProjectColumn => Boolean(row));
 }
 
 function isSchemaCacheMissError(err: unknown): boolean {
@@ -587,14 +611,15 @@ export const cloudApi = {
 
   async listProjectColumnsFromMeta(): Promise<StoredProjectColumn[]> {
     const meta = await cloudApi.ensureProjectColumnsMeta();
-    return parseStoredProjectColumns(meta.custom?.[PROJECT_COLUMNS_DEFS_KEY]).sort(
+    const custom = (meta.custom ?? {}) as Record<string, unknown>;
+    return parseStoredProjectColumns(custom[PROJECT_COLUMNS_DEFS_KEY]).sort(
       (a, b) => a.sort_order - b.sort_order || a.label.localeCompare(b.label),
     );
   },
 
   async saveProjectColumnsToMeta(
     columns: StoredProjectColumn[],
-    options?: { markSeeded?: boolean },
+    options?: { markSeeded?: boolean; markOmitDisTalent?: boolean },
   ): Promise<void> {
     const meta = await cloudApi.ensureProjectColumnsMeta();
     const normalized = columns
@@ -605,12 +630,17 @@ export const cloudApi = {
       }))
       .filter((col) => col.id && col.label)
       .sort((a, b) => a.sort_order - b.sort_order || a.label.localeCompare(b.label));
-    const nextCustom: Record<string, string> = {
-      ...(meta.custom ?? {}),
+    const prevCustom = (meta.custom ?? {}) as Record<string, unknown>;
+    const nextCustom: Record<string, unknown> = {
+      ...prevCustom,
+      // Always store as a JSON string so parseStoredProjectColumns stays deterministic.
       [PROJECT_COLUMNS_DEFS_KEY]: JSON.stringify(normalized),
     };
-    if (options?.markSeeded || metaSeededFlag(meta.custom)) {
+    if (options?.markSeeded || metaSeededFlag(prevCustom)) {
       nextCustom[PROJECT_COLUMNS_SEEDED_KEY] = "1";
+    }
+    if (options?.markOmitDisTalent || metaOmitDisTalentDone(prevCustom)) {
+      nextCustom[PROJECT_OMIT_DIS_TALENT_KEY] = "1";
     }
     const { error } = await sb().from("projects").update({ custom: nextCustom }).eq("id", meta.id);
     if (error) throw error;
@@ -638,10 +668,11 @@ export const cloudApi = {
       if (!isSchemaCacheMissError(err)) throw err;
     }
     const meta = await cloudApi.ensureProjectColumnsMeta();
-    const metaCols = parseStoredProjectColumns(meta.custom?.[PROJECT_COLUMNS_DEFS_KEY]).sort(
+    const metaCustom = (meta.custom ?? {}) as Record<string, unknown>;
+    const metaCols = parseStoredProjectColumns(metaCustom[PROJECT_COLUMNS_DEFS_KEY]).sort(
       (a, b) => a.sort_order - b.sort_order || a.label.localeCompare(b.label),
     );
-    const alreadySeeded = metaSeededFlag(meta.custom);
+    const alreadySeeded = metaSeededFlag(metaCustom);
     // After seed, meta is the membership source of truth (table is best-effort mirror).
     // Otherwise a failed project_columns DELETE would resurrect removed columns.
     const mergedStored = (() => {
@@ -670,7 +701,22 @@ export const cloudApi = {
       mergedStored.map(({ id, label }) => ({ id, label })),
       alreadySeeded,
     );
-    const finalStored = withSortOrder(seeded.columns);
+
+    // One-time: drop DIS + TALENT POLICY from shared defaults (Admin can re-add later).
+    let omitDisTalent = false;
+    let membership = seeded.columns;
+    if (!metaOmitDisTalentDone(metaCustom)) {
+      const filtered = membership.filter((c) => !PROJECT_OMITTED_DEFAULT_IDS.has(c.id));
+      if (filtered.length !== membership.length) {
+        membership = filtered;
+        omitDisTalent = true;
+      } else {
+        // Flag even when already absent so we do not re-check forever.
+        omitDisTalent = true;
+      }
+    }
+
+    const finalStored = withSortOrder(membership);
 
     // Keep meta as durable mirror so Add Column survives project_columns PGRST205.
     const metaKey = metaCols
@@ -681,10 +727,28 @@ export const cloudApi = {
       .map((c) => `${c.id}:${c.label}:${c.sort_order}`)
       .sort()
       .join("|");
-    const needWrite = finalKey !== metaKey || seeded.changed || (seeded.seeded && !alreadySeeded);
+    const needWrite =
+      finalKey !== metaKey ||
+      seeded.changed ||
+      omitDisTalent ||
+      (seeded.seeded && !alreadySeeded);
     if (needWrite) {
       try {
-        await cloudApi.saveProjectColumnsToMeta(finalStored, { markSeeded: seeded.seeded });
+        await cloudApi.saveProjectColumnsToMeta(finalStored, {
+          markSeeded: seeded.seeded,
+          markOmitDisTalent: omitDisTalent || metaOmitDisTalentDone(metaCustom),
+        });
+        // Best-effort delete omitted ids from project_columns mirror.
+        if (omitDisTalent) {
+          for (const id of PROJECT_OMITTED_DEFAULT_IDS) {
+            try {
+              const { error } = await sb().from("project_columns").delete().eq("id", id);
+              if (error && !isSchemaCacheMissError(error)) throw error;
+            } catch (err) {
+              if (!isSchemaCacheMissError(err)) throw err;
+            }
+          }
+        }
       } catch {
         /* non-admin readers may lack update — listing still works from merge */
       }

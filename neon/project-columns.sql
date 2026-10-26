@@ -105,16 +105,15 @@ select
       {"id":"00000000-0000-4000-8000-0000000000d1","label":"LENOVO PROJECT NAME","sort_order":0},
       {"id":"00000000-0000-4000-8000-0000000000d2","label":"BIOS ID","sort_order":1},
       {"id":"00000000-0000-4000-8000-0000000000d3","label":"PLATFORM","sort_order":2},
-      {"id":"00000000-0000-4000-8000-0000000000d4","label":"DIS","sort_order":3},
-      {"id":"00000000-0000-4000-8000-0000000000d5","label":"SS DATE","sort_order":4},
-      {"id":"00000000-0000-4000-8000-0000000000d6","label":"EOL DATE","sort_order":5},
-      {"id":"00000000-0000-4000-8000-0000000000d7","label":"SECURITY UPDATE","sort_order":6},
-      {"id":"00000000-0000-4000-8000-0000000000d8","label":"TALENT POLICY","sort_order":7},
-      {"id":"00000000-0000-4000-8000-0000000000d9","label":"PROJECT LEADER","sort_order":8},
-      {"id":"00000000-0000-4000-8000-0000000000db","label":"Owner","sort_order":9},
-      {"id":"00000000-0000-4000-8000-0000000000da","label":"TPE OWNER","sort_order":10}
+      {"id":"00000000-0000-4000-8000-0000000000d5","label":"SS DATE","sort_order":3},
+      {"id":"00000000-0000-4000-8000-0000000000d6","label":"EOL DATE","sort_order":4},
+      {"id":"00000000-0000-4000-8000-0000000000d7","label":"SECURITY UPDATE","sort_order":5},
+      {"id":"00000000-0000-4000-8000-0000000000d9","label":"PROJECT LEADER","sort_order":6},
+      {"id":"00000000-0000-4000-8000-0000000000db","label":"Owner","sort_order":7},
+      {"id":"00000000-0000-4000-8000-0000000000da","label":"TPE OWNER","sort_order":8}
     ]',
-    '__kssw_columns_seeded', '1'
+    '__kssw_columns_seeded', '1',
+    '__kssw_omit_dis_talent_v1', '1'
   )
 from (
   select id from public.profiles where is_admin order by created_at asc limit 1
