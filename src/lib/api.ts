@@ -464,7 +464,14 @@ export const api = {
       return projectsUiStore.replaceColumns(columns);
     }
     try {
-      return await withProjectColumnsRetry(() => cloudApi.replaceProjectColumns(columns));
+      const next = await withProjectColumnsRetry(() => cloudApi.replaceProjectColumns(columns));
+      // Keep local mirror aligned so a later local fallback cannot resurrect removed cols.
+      try {
+        projectsUiStore.replaceColumns(next);
+      } catch {
+        /* ignore local mirror failures */
+      }
+      return next;
     } catch (err) {
       if (isProjectColumnsUnavailableError(err)) {
         throw new Error(projectColumnsUnavailableMessage(err));

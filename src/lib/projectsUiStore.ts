@@ -2,6 +2,7 @@ import type { Project, ProjectColumn } from "./types";
 
 const KEY = "awb-projects-ui-v1";
 const LOCAL_COLUMNS_SEEDED_KEY = "awb-projects-columns-seeded-v1";
+const LOCAL_OMIT_DIS_TALENT_KEY = "awb-projects-omit-dis-talent-v1";
 
 /** Always-visible left column; not managed via Add/Remove column. */
 export const PROJECT_LOCKED_COLUMN = {
@@ -82,6 +83,28 @@ export const PROJECT_STANDARD_COLUMNS = [
 ] as const;
 
 export type ProjectStandardKey = (typeof PROJECT_STANDARD_COLUMNS)[number]["key"];
+
+/**
+ * Standards included on first seed / new meta. DIS + TALENT POLICY stay known
+ * (re-addable via + ADD COLUMN) but are omitted from the default set.
+ */
+export const PROJECT_DEFAULT_SEED_KEYS: readonly ProjectStandardKey[] = [
+  "lenovo_name",
+  "bios_id",
+  "platform",
+  "ss_date",
+  "eol_date",
+  "security_update",
+  "owner",
+  "project_owner",
+  "tpe_owner",
+];
+
+/** Dropped from shared meta once (Admin can re-add via + ADD COLUMN afterward). */
+export const PROJECT_OMITTED_DEFAULT_IDS = new Set<string>([
+  "00000000-0000-4000-8000-0000000000d4", // DIS
+  "00000000-0000-4000-8000-0000000000d8", // TALENT POLICY
+]);
 
 /**
  * Labels that map to PROJECT LEADER (`projects.owner`).
@@ -174,7 +197,11 @@ export function standardKeyForColumn(col: Pick<ProjectColumn, "id" | "label">): 
 }
 
 export function defaultStandardProjectColumns(): ProjectColumn[] {
-  return PROJECT_STANDARD_COLUMNS.map(({ id, label }) => ({ id, label }));
+  const seed = new Set<ProjectStandardKey>(PROJECT_DEFAULT_SEED_KEYS);
+  return PROJECT_STANDARD_COLUMNS.filter((c) => seed.has(c.key)).map(({ id, label }) => ({
+    id,
+    label,
+  }));
 }
 
 /**
@@ -331,8 +358,10 @@ export function seedStandardProjectColumns(
   const next: ProjectColumn[] = [];
   let changed = false;
   const claimed = new Set<string>();
+  const seedKeys = new Set<ProjectStandardKey>(PROJECT_DEFAULT_SEED_KEYS);
+  const seedStandards = PROJECT_STANDARD_COLUMNS.filter((std) => seedKeys.has(std.key));
 
-  for (const std of PROJECT_STANDARD_COLUMNS) {
+  for (const std of seedStandards) {
     const existing = columns.find((c) => {
       if (claimed.has(c.id)) return false;
       if (c.id === std.id || c.id === std.key) return true;
@@ -509,6 +538,15 @@ function prepareState(state: ProjectsUiState): boolean {
     state.columns = ensured.columns;
   }
   if (ensured.seeded) markLocalColumnsSeeded();
+  // One-time local drop of DIS + TALENT POLICY (re-addable via + ADD COLUMN).
+  if (localStorage.getItem(LOCAL_OMIT_DIS_TALENT_KEY) !== "1") {
+    const filtered = state.columns.filter((c) => !PROJECT_OMITTED_DEFAULT_IDS.has(c.id));
+    if (filtered.length !== state.columns.length) {
+      state.columns = filtered;
+      changed = true;
+    }
+    localStorage.setItem(LOCAL_OMIT_DIS_TALENT_KEY, "1");
+  }
   return changed;
 }
 
@@ -580,7 +618,8 @@ export const projectsUiStore = {
 
   removeColumn(columnId: string) {
     const state = load();
-    prepareState(state);
+    // Avoid prepareState seed before remove — missing seed flag must not resurrect cols.
+    scrubLockedCustomColumns(state);
     const target = state.columns.find((c) => c.id === columnId);
     if (!target) return;
     if (isReservedProjectColumnLabel(target.label)) {
@@ -597,6 +636,7 @@ export const projectsUiStore = {
         }
       }
     }
+    markLocalColumnsSeeded();
     save(state);
   },
 
@@ -606,7 +646,9 @@ export const projectsUiStore = {
    */
   replaceColumns(columns: ProjectColumn[]): ProjectColumn[] {
     const state = load();
-    prepareState(state);
+    // Do not prepareState/seed before replace — that would resurrect removed standards
+    // when the local seed flag is missing. Apply the Admin list as membership SoT.
+    scrubLockedCustomColumns(state);
     const next = normalizeManagedColumns(columns);
     const labels = new Set<string>();
     for (const col of next) {
@@ -631,6 +673,7 @@ export const projectsUiStore = {
       }
     }
     state.columns = next;
+    markLocalColumnsSeeded();
     save(state);
     return [...state.columns];
   },

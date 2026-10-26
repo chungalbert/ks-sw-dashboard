@@ -421,6 +421,7 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
     setRemoveColId("");
     setRemoveColOpen(false);
     setMoreOpen(false);
+    // Column membership is draft until Admin Save (same as field edits).
   };
 
   const moveDraftColumn = (columnId: string, delta: -1 | 1) => {
@@ -959,11 +960,7 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
                         if (stdKey) {
                           const value = standardFieldValue(draft, stdKey);
                           const isDate = stdKey === "ss_date" || stdKey === "eol_date";
-                          if (
-                            stdKey === "owner" ||
-                            stdKey === "project_owner" ||
-                            stdKey === "tpe_owner"
-                          ) {
+                          if (stdKey === "owner" || stdKey === "project_owner") {
                             const selected = ownerSelectValue(value);
                             const orphan =
                               selected !== "" &&
@@ -971,12 +968,7 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
                                 (p) => p.display_name === selected,
                               );
                             const fieldKey = stdKey;
-                            const aria =
-                              stdKey === "owner"
-                                ? "Project Leader"
-                                : stdKey === "tpe_owner"
-                                  ? "TPE Owner"
-                                  : "Owner";
+                            const aria = stdKey === "owner" ? "Project Leader" : "Owner";
                             return (
                               <td key={col.id}>
                                 {canEditFields ? (
@@ -996,7 +988,6 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
                                     {personnelOwnerOptions.map((p) => (
                                       <option key={p.id} value={p.display_name}>
                                         {p.display_name}
-                                        {p.username ? ` (${p.username})` : ""}
                                       </option>
                                     ))}
                                   </select>
@@ -1006,6 +997,7 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
                               </td>
                             );
                           }
+                          // TPE OWNER: free-text (typed individually), not Personnel dropdown.
                           return (
                             <td key={col.id}>
                               {canEditFields ? (
