@@ -2697,6 +2697,11 @@ th { color: var(--muted); font-weight: 500; font-size: 12px; }
   box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
 }
 
+.pi-checkpoint-modal {
+  width: min(1080px, 96vw);
+  max-height: min(92vh, 860px);
+}
+
 .pi-modal-head {
   display: flex;
   align-items: center;
@@ -2740,71 +2745,147 @@ th { color: var(--muted); font-weight: 500; font-size: 12px; }
   gap: 12px;
 }
 
-.pi-checkpoint-empty,
 .pi-checkpoint-hint {
   margin: 0;
   font-size: 13px;
   color: #9aa0a6;
 }
 
-.pi-checkpoint-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 8px;
-  max-height: min(50vh, 360px);
-  overflow: auto;
-}
-
-.pi-checkpoint-item {
+.pi-checkpoint-handover {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
+  align-items: center;
   gap: 10px;
-  padding: 8px 10px;
-  background: #1f2023;
-  border: 1px solid var(--pi-line, #3c4043);
-  border-radius: 8px;
-}
-
-.pi-checkpoint-check {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  flex: 1;
-  min-width: 0;
   font-size: 13px;
+  font-weight: 600;
   color: #e8eaed;
-  cursor: pointer;
 }
 
-.pi-checkpoint-check input {
-  margin-top: 2px;
-  flex-shrink: 0;
-  accent-color: #34a853;
+.pi-checkpoint-handover input[type="date"] {
+  border: 1px solid var(--pi-line, #3c4043);
+  background: #1f2023;
+  color: #e8eaed;
+  border-radius: 8px;
+  padding: 6px 10px;
+  font: inherit;
 }
 
-.pi-checkpoint-check span.is-checked {
+.pi-checkpoint-table-wrap {
+  max-height: min(62vh, 560px);
+  overflow: auto;
+  border: 1px solid #5f6368;
+  border-radius: 8px;
+  background: #1f2023;
+}
+
+.pi-checkpoint-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  color: #e8eaed;
+}
+
+.pi-checkpoint-table th,
+.pi-checkpoint-table td {
+  border: 1px solid #5f6368;
+  padding: 6px 8px;
+  vertical-align: middle;
+}
+
+.pi-checkpoint-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #3c4043;
+  color: #fff;
+  font-weight: 700;
+  text-align: center;
+  letter-spacing: 0.03em;
+}
+
+.pi-checkpoint-table tbody tr.is-checked td {
+  background: rgba(52, 168, 83, 0.08);
+}
+
+.pi-checkpoint-type {
+  min-width: 140px;
+  max-width: 200px;
+  font-weight: 600;
+  background: #292a2d;
+}
+
+.pi-checkpoint-type.is-continued {
+  color: transparent;
+}
+
+.pi-checkpoint-type.is-continued .pi-checkpoint-cell-input {
   color: #9aa0a6;
-  text-decoration: line-through;
+}
+
+.pi-checkpoint-cell-input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid transparent;
+  background: transparent;
+  color: inherit;
+  border-radius: 4px;
+  padding: 4px 6px;
+  font: inherit;
+}
+
+.pi-checkpoint-cell-input:focus {
+  outline: none;
+  border-color: #8ab4f8;
+  background: #131314;
+}
+
+.pi-checkpoint-status {
+  text-align: center;
+  white-space: nowrap;
+  width: 110px;
+}
+
+.pi-checkpoint-check-btn {
+  border: 0;
+  border-radius: 4px;
+  background: #1a73e8;
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 5px 14px;
+  cursor: pointer;
+  min-width: 78px;
+}
+
+.pi-checkpoint-check-btn:hover:not(:disabled) {
+  background: #1765cc;
+}
+
+.pi-checkpoint-check-btn.is-done {
+  background: #34a853;
+}
+
+.pi-checkpoint-check-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.pi-checkpoint-col-actions {
+  width: 64px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.pi-checkpoint-empty-cell {
+  text-align: center;
+  color: #9aa0a6;
+  padding: 18px 12px !important;
 }
 
 .pi-checkpoint-add {
   display: flex;
   gap: 8px;
   align-items: center;
-}
-
-.pi-checkpoint-add input {
-  flex: 1;
-  min-width: 0;
-  border: 1px solid var(--pi-line, #3c4043);
-  background: #1f2023;
-  color: #e8eaed;
-  border-radius: 8px;
-  padding: 8px 10px;
-  font: inherit;
 }
 
 .pi-no {

@@ -148,11 +148,27 @@ export interface ProjectColumn {
   label: string;
 }
 
-/** One handover checklist item on a project (Actions → CheckPoint). */
+/** One handover checklist row on a project (Actions → CheckPoint spreadsheet). */
 export interface ProjectCheckpoint {
   id: string;
-  text: string;
+  /** Category / Type column (e.g. Basic information (Lists/SPEC)). */
+  type: string;
+  /** Item column. */
+  item: string;
+  /** Description column. */
+  description: string;
   checked: boolean;
+  /**
+   * Legacy flat-list label from #100 `{id,text,checked}`.
+   * Migrated into `item` on read; kept optional for older in-memory overlays.
+   */
+  text?: string;
+}
+
+/** Neon `projects.checkpoints` jsonb document (v2). Legacy was a bare array. */
+export interface ProjectCheckpointDoc {
+  handover_date: string;
+  items: ProjectCheckpoint[];
 }
 
 export interface Project {
@@ -183,8 +199,10 @@ export interface Project {
   tpe_owner?: string;
   /** Values for user-defined Projects columns. */
   custom?: Record<string, string>;
-  /** Handover CheckPoint items (Neon `checkpoints` jsonb + custom fallback). */
+  /** Handover CheckPoint rows (from Neon `checkpoints` jsonb / custom fallback). */
   checkpoints?: ProjectCheckpoint[];
+  /** Handover date shown above the CheckPoint sheet. */
+  checkpoint_handover_date?: string;
 }
 
 export interface ProjectMember {

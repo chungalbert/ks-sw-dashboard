@@ -2,6 +2,12 @@
 -- Safe to re-run.
 -- Prefer dedicated jsonb column; client also keeps a custom-key fallback
 -- (`custom.__kssw_checkpoints`) until this migration is applied + Data API refresh.
+--
+-- Document shape (client-owned; no further ALTER needed):
+--   { "handover_date": "YYYY-MM-DD", "items": [
+--       { "id", "type", "item", "description", "checked" }
+--     ] }
+-- Legacy bare arrays `[{id,text,checked}]` are still accepted and migrated on read.
 
 alter table public.projects
   add column if not exists checkpoints jsonb not null default '[]'::jsonb;

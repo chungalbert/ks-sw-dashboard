@@ -286,6 +286,7 @@ export type ProjectFieldPatch = {
   tpe_owner?: string;
   custom?: Record<string, string>;
   checkpoints?: ProjectCheckpoint[];
+  checkpoint_handover_date?: string;
 };
 
 interface ProjectOverlay extends ProjectFieldPatch {}
@@ -698,6 +699,8 @@ export const projectsUiStore = {
       tpe_owner: overlay.tpe_owner ?? project.tpe_owner ?? "",
       custom: { ...(project.custom ?? {}), ...(overlay.custom ?? {}) },
       checkpoints: overlay.checkpoints ?? project.checkpoints ?? [],
+      checkpoint_handover_date:
+        overlay.checkpoint_handover_date ?? project.checkpoint_handover_date ?? "",
     };
   },
 
@@ -729,6 +732,9 @@ export const projectsUiStore = {
     if (patch.checkpoints !== undefined) {
       next.checkpoints = patch.checkpoints;
     }
+    if (patch.checkpoint_handover_date !== undefined) {
+      next.checkpoint_handover_date = patch.checkpoint_handover_date;
+    }
 
     state.overlays[projectId] = next;
     save(state);
@@ -737,6 +743,8 @@ export const projectsUiStore = {
       ...next,
       custom: { ...(base.custom ?? {}), ...(next.custom ?? {}) },
       checkpoints: next.checkpoints ?? base.checkpoints ?? [],
+      checkpoint_handover_date:
+        next.checkpoint_handover_date ?? base.checkpoint_handover_date ?? "",
     });
   },
 };
