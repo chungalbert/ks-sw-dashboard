@@ -294,14 +294,28 @@ function parseStoredProjectColumns(raw: unknown): StoredProjectColumn[] {
     .filter((row): row is StoredProjectColumn => Boolean(row));
 }
 
+function postgrestErrorMessage(err: unknown): string {
+  if (!err) return "";
+  if (err instanceof Error) return err.message;
+  if (typeof err === "object") {
+    const row = err as { message?: unknown; code?: unknown; details?: unknown; hint?: unknown };
+    return [row.message, row.code, row.details, row.hint].filter(Boolean).map(String).join(" ").trim();
+  }
+  return String(err);
+}
+
+function throwPostgrestError(error: unknown): never {
+  const msg = postgrestErrorMessage(error) || "Request failed";
+  const wrapped = new Error(msg);
+  if (error && typeof error === "object") {
+    const code = (error as { code?: unknown }).code;
+    if (code != null) (wrapped as Error & { code?: string }).code = String(code);
+  }
+  throw wrapped;
+}
+
 function isSchemaCacheMissError(err: unknown): boolean {
-  const msg = (
-    err && typeof err === "object" && "message" in err
-      ? String((err as { message?: unknown }).message ?? "")
-      : err instanceof Error
-        ? err.message
-        : String(err ?? "")
-  ).toLowerCase();
+  const msg = postgrestErrorMessage(err).toLowerCase();
   const code =
     err && typeof err === "object" && "code" in err
       ? String((err as { code?: unknown }).code ?? "")
@@ -309,9 +323,11 @@ function isSchemaCacheMissError(err: unknown): boolean {
   return (
     code === "PGRST205" ||
     code === "PGRST202" ||
+    code === "PGRST204" ||
     msg.includes("schema cache") ||
     msg.includes("could not find the table") ||
-    msg.includes("could not find the function")
+    msg.includes("could not find the function") ||
+    msg.includes("could not find the") && msg.includes("column")
   );
 }
 
@@ -606,25 +622,26 @@ export const cloudApi = {
         .eq("id", projectId)
         .select()
         .single();
-      if (error) throw error;
+      if (error) throwPostgrestError(error);
       return normalizeProjectRow(data as Project);
     };
 
     try {
       return await runUpdate(updates);
     } catch (err) {
-      // Pre-migration / stale Data API cache: projects.checkpoints missing.
-      // Custom fallback key still persists CheckPoints until neon/project-checkpoints.sql + refresh.
-      const msg = err instanceof Error ? err.message : String(err);
-      const code =
-        err && typeof err === "object" && "code" in err ? String((err as { code?: unknown }).code ?? "") : "";
-      const missingCheckpointsCol =
-        patch.checkpoints !== undefined &&
-        /checkpoints/i.test(msg) &&
-        (/column|schema cache|Could not find|PGRST204/i.test(msg) || code === "PGRST204");
-      if (!missingCheckpointsCol) throw err;
+      // Stale Data API cache / missing checkpoints column: persist via custom fallback only.
+      const wroteCheckpoints =
+        patch.checkpoints !== undefined || patch.checkpoint_handover_date !== undefined;
+      const msg = postgrestErrorMessage(err);
+      const missingOrBadCheckpointsCol =
+        wroteCheckpoints &&
+        "checkpoints" in updates &&
+        (/checkpoints/i.test(msg) || isSchemaCacheMissError(err));
+      if (!missingOrBadCheckpointsCol) throw err instanceof Error ? err : new Error(msg || "Update failed");
       const { checkpoints: _drop, ...rest } = updates;
-      if (Object.keys(rest).length === 0) throw err;
+      if (Object.keys(rest).length === 0) {
+        throw err instanceof Error ? err : new Error(msg || "CheckPoint save failed");
+      }
       return await runUpdate(rest);
     }
   },

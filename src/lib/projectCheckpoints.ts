@@ -79,19 +79,65 @@ export function parseProjectCheckpoints(raw: unknown): ProjectCheckpoint[] {
   return parseCheckpointDoc(raw).items;
 }
 
+function checkpointDocFromCustom(
+  custom: Record<string, unknown> | null | undefined,
+): ProjectCheckpointDoc | null {
+  if (!custom || typeof custom !== "object" || !(PROJECT_CHECKPOINTS_CUSTOM_KEY in custom)) {
+    return null;
+  }
+  return parseCheckpointDoc(custom[PROJECT_CHECKPOINTS_CUSTOM_KEY]);
+}
+
+function checkpointDocHasContent(doc: ProjectCheckpointDoc): boolean {
+  return Boolean(doc.handover_date?.trim()) || doc.items.length > 0;
+}
+
 /** Extract checkpoint doc from a Neon/local project row (column and/or custom fallback). */
 export function checkpointDocFromProjectRow(row: {
   checkpoints?: unknown;
   custom?: Record<string, unknown> | null;
 }): ProjectCheckpointDoc {
+  const fromCustom = checkpointDocFromCustom(row.custom);
   if (row.checkpoints !== undefined && row.checkpoints !== null) {
-    return parseCheckpointDoc(row.checkpoints);
+    const fromCol = parseCheckpointDoc(row.checkpoints);
+    // Empty column (e.g. `[]`) must not hide a dual-written custom fallback.
+    if (checkpointDocHasContent(fromCol) || !fromCustom || !checkpointDocHasContent(fromCustom)) {
+      return fromCol;
+    }
+    return fromCustom;
   }
-  const custom = row.custom;
-  if (custom && typeof custom === "object" && PROJECT_CHECKPOINTS_CUSTOM_KEY in custom) {
-    return parseCheckpointDoc(custom[PROJECT_CHECKPOINTS_CUSTOM_KEY]);
+  return fromCustom ?? { handover_date: "", items: [] };
+}
+
+/** Type section + rows (preserves first-seen Type order). */
+export interface CheckpointTypeGroup {
+  type: string;
+  items: ProjectCheckpoint[];
+}
+
+export function groupCheckpointsByType(items: ProjectCheckpoint[]): CheckpointTypeGroup[] {
+  const groups: CheckpointTypeGroup[] = [];
+  const indexByType = new Map<string, number>();
+  for (const row of items) {
+    const type = (row.type ?? "").trim() || "Ungrouped";
+    let idx = indexByType.get(type);
+    if (idx === undefined) {
+      idx = groups.length;
+      indexByType.set(type, idx);
+      groups.push({ type, items: [] });
+    }
+    groups[idx].items.push({ ...row, type });
   }
-  return { handover_date: "", items: [] };
+  return groups;
+}
+
+export function flattenCheckpointGroups(groups: CheckpointTypeGroup[]): ProjectCheckpoint[] {
+  return groups.flatMap((group) =>
+    group.items.map((row) => ({
+      ...row,
+      type: group.type,
+    })),
+  );
 }
 
 export function checkpointsFromProjectRow(row: {
