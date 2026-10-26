@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, Fragment, useEffect, useMemo, useState } from "react";
 import {
   EMPTY_ISSUE_COLUMN_FILTERS,
   IssueColumnFilter,
@@ -24,7 +24,11 @@ import {
   type ProjectStandardKey,
 } from "../lib/projectsUiStore";
 import { buildDefaultCheckpointTemplate } from "../lib/checkpointTemplate";
-import { areProjectCheckpointsComplete } from "../lib/projectCheckpoints";
+import {
+  areProjectCheckpointsComplete,
+  flattenCheckpointGroups,
+  groupCheckpointsByType,
+} from "../lib/projectCheckpoints";
 import {
   isTaskOpen,
   normalizePersonnelRole,
@@ -228,6 +232,15 @@ export function ProjectsIssuesPage({
   const [checkpointHandoverDate, setCheckpointHandoverDate] = useState("");
   /** Local edits only — Neon write happens on Save. */
   const [checkpointDirty, setCheckpointDirty] = useState(false);
+  /** Collapsed Type section keys (type label). */
+  const [checkpointCollapsed, setCheckpointCollapsed] = useState<Record<string, boolean>>({});
+  /** After Save, reorder stays locked until the modal is opened again. */
+  const [checkpointOrderLocked, setCheckpointOrderLocked] = useState(false);
+  /** + Add row picker: choose Type (existing or new). */
+  const [checkpointAddOpen, setCheckpointAddOpen] = useState(false);
+  const [checkpointAddTypeMode, setCheckpointAddTypeMode] = useState<"existing" | "new">("existing");
+  const [checkpointAddType, setCheckpointAddType] = useState("");
+  const [checkpointAddNewType, setCheckpointAddNewType] = useState("");
 
   const setColFilter = <K extends keyof IssueColumnFilters>(key: K, value: IssueColumnFilters[K]) => {
     setColFilters((prev) => ({ ...prev, [key]: value }));
@@ -565,8 +578,18 @@ export function ProjectsIssuesPage({
     setShowNewIssue(false);
   };
 
+  const resetCheckpointAddDialog = () => {
+    setCheckpointAddOpen(false);
+    setCheckpointAddTypeMode("existing");
+    setCheckpointAddType("");
+    setCheckpointAddNewType("");
+  };
+
   const openCheckpoints = (project: Project) => {
     setCheckpointProjectId(project.id);
+    setCheckpointCollapsed({});
+    setCheckpointOrderLocked(false);
+    resetCheckpointAddDialog();
     const existing = [...(project.checkpoints ?? [])];
     const handover = project.checkpoint_handover_date ?? "";
     // Seed template into local draft only (no Neon write until Save).
@@ -589,11 +612,21 @@ export function ProjectsIssuesPage({
     setCheckpointDraft([]);
     setCheckpointHandoverDate("");
     setCheckpointDirty(false);
+    setCheckpointCollapsed({});
+    setCheckpointOrderLocked(false);
+    resetCheckpointAddDialog();
   };
 
   const canEditCheckpoints = (projectId: string) => leaderProjectIds.includes(projectId);
 
   const markCheckpointDirty = () => setCheckpointDirty(true);
+
+  const mutateCheckpointGroups = (
+    fn: (groups: ReturnType<typeof groupCheckpointsByType>) => ReturnType<typeof groupCheckpointsByType>,
+  ) => {
+    setCheckpointDraft((prev) => flattenCheckpointGroups(fn(groupCheckpointsByType(prev))));
+    markCheckpointDirty();
+  };
 
   const onToggleCheckpoint = (itemId: string) => {
     if (!checkpointProjectId || !canEditCheckpoints(checkpointProjectId)) return;
@@ -609,13 +642,69 @@ export function ProjectsIssuesPage({
     markCheckpointDirty();
   };
 
-  const onAddCheckpoint = () => {
+  const onOpenAddCheckpoint = () => {
     if (!checkpointProjectId || !canEditCheckpoints(checkpointProjectId)) return;
-    setCheckpointDraft((prev) => {
-      const lastType = prev[prev.length - 1]?.type ?? "";
-      return [...prev, emptyCheckpointRow({ type: lastType })];
-    });
+    const types = groupCheckpointsByType(checkpointDraft).map((g) => g.type);
+    setCheckpointAddTypeMode(types.length > 0 ? "existing" : "new");
+    setCheckpointAddType(types[0] ?? "");
+    setCheckpointAddNewType("");
+    setCheckpointAddOpen(true);
+  };
+
+  const onConfirmAddCheckpoint = () => {
+    if (!checkpointProjectId || !canEditCheckpoints(checkpointProjectId)) return;
+    const typeName =
+      checkpointAddTypeMode === "new"
+        ? checkpointAddNewType.trim()
+        : checkpointAddType.trim();
+    if (!typeName) return;
+    setCheckpointDraft((prev) => [...prev, emptyCheckpointRow({ type: typeName })]);
     markCheckpointDirty();
+    setCheckpointCollapsed((prev) => ({ ...prev, [typeName]: false }));
+    resetCheckpointAddDialog();
+  };
+
+  const onRenameCheckpointType = (fromType: string, nextType: string) => {
+    mutateCheckpointGroups((groups) =>
+      groups.map((group) =>
+        group.type === fromType
+          ? {
+              type: nextType,
+              items: group.items.map((row) => ({ ...row, type: nextType })),
+            }
+          : group,
+      ),
+    );
+    setCheckpointCollapsed((prev) => {
+      if (!(fromType in prev)) return prev;
+      const next = { ...prev };
+      next[nextType] = next[fromType];
+      delete next[fromType];
+      return next;
+    });
+  };
+
+  const onMoveCheckpointType = (typeIndex: number, dir: -1 | 1) => {
+    mutateCheckpointGroups((groups) => {
+      const next = [...groups];
+      const swap = typeIndex + dir;
+      if (swap < 0 || swap >= next.length) return groups;
+      [next[typeIndex], next[swap]] = [next[swap], next[typeIndex]];
+      return next;
+    });
+  };
+
+  const onMoveCheckpointRow = (type: string, rowIndex: number, dir: -1 | 1) => {
+    mutateCheckpointGroups((groups) =>
+      groups.map((group) => {
+        if (group.type !== type) return group;
+        const items = [...group.items];
+        const swap = rowIndex + dir;
+        if (swap < 0 || swap >= items.length) return group;
+        [items[rowIndex], items[swap]] = [items[swap], items[rowIndex]];
+        return { ...group, items };
+      }),
+    );
   };
 
   const onSaveCheckpoints = async () => {
@@ -630,9 +719,16 @@ export function ProjectsIssuesPage({
         await reload();
       });
       setCheckpointDirty(false);
-      closeCheckpoints({ force: true });
+      setCheckpointOrderLocked(true);
+      resetCheckpointAddDialog();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "CheckPoint save failed");
+      const msg =
+        err instanceof Error
+          ? err.message
+          : err && typeof err === "object" && "message" in err
+            ? String((err as { message?: unknown }).message ?? "")
+            : "";
+      setError(msg.trim() || "CheckPoint save failed");
     }
   };
 
@@ -1472,7 +1568,11 @@ export function ProjectsIssuesPage({
       {checkpointProjectId && (() => {
         const cpProject = projects.find((p) => p.id === checkpointProjectId);
         const canEdit = canEditCheckpoints(checkpointProjectId);
+        const canReorder = canEdit && !checkpointOrderLocked;
         const cpBusy = saveStatus.kind === "saving";
+        const checkpointGroups = groupCheckpointsByType(checkpointDraft);
+        const existingTypes = checkpointGroups.map((g) => g.type);
+        const colCount = 3 + (canReorder ? 1 : 0) + (canEdit ? 1 : 0);
         return (
           <div
             className="pi-modal-backdrop"
@@ -1521,110 +1621,184 @@ export function ProjectsIssuesPage({
                   <table className="pi-checkpoint-table">
                     <thead>
                       <tr>
-                        <th scope="col">Type</th>
                         <th scope="col">Item</th>
                         <th scope="col">Description</th>
                         <th scope="col">Check Status</th>
+                        {canReorder && <th scope="col" className="pi-checkpoint-col-order">Order</th>}
                         {canEdit && <th scope="col" className="pi-checkpoint-col-actions" />}
                       </tr>
                     </thead>
                     <tbody>
                       {checkpointDraft.length === 0 ? (
                         <tr>
-                          <td colSpan={canEdit ? 5 : 4} className="pi-checkpoint-empty-cell">
+                          <td colSpan={colCount} className="pi-checkpoint-empty-cell">
                             No CheckPoints yet. Add a handover row below.
                           </td>
                         </tr>
                       ) : (
-                        checkpointDraft.map((row, index) => {
-                          const prevType = index > 0 ? checkpointDraft[index - 1]?.type : null;
-                          const showType = row.type !== prevType;
+                        checkpointGroups.map((group, typeIndex) => {
+                          const collapsed = Boolean(checkpointCollapsed[group.type]);
                           return (
-                            <tr key={row.id} className={row.checked ? "is-checked" : undefined}>
-                              <td className={`pi-checkpoint-type${showType ? "" : " is-continued"}`}>
-                                {canEdit ? (
-                                  <input
-                                    className="pi-checkpoint-cell-input"
-                                    value={row.type}
-                                    disabled={cpBusy}
-                                    aria-label="Type"
-                                    onChange={(e) => {
-                                      const value = e.target.value;
-                                      setCheckpointDraft((prev) =>
-                                        prev.map((r) => (r.id === row.id ? { ...r, type: value } : r)),
-                                      );
-                                      markCheckpointDirty();
-                                    }}
-                                  />
-                                ) : (
-                                  <span>{showType ? row.type || "—" : ""}</span>
-                                )}
-                              </td>
-                              <td>
-                                {canEdit ? (
-                                  <input
-                                    className="pi-checkpoint-cell-input"
-                                    value={row.item}
-                                    disabled={cpBusy}
-                                    aria-label="Item"
-                                    onChange={(e) => {
-                                      const value = e.target.value;
-                                      setCheckpointDraft((prev) =>
-                                        prev.map((r) => (r.id === row.id ? { ...r, item: value } : r)),
-                                      );
-                                      markCheckpointDirty();
-                                    }}
-                                  />
-                                ) : (
-                                  <span>{row.item || "—"}</span>
-                                )}
-                              </td>
-                              <td>
-                                {canEdit ? (
-                                  <input
-                                    className="pi-checkpoint-cell-input"
-                                    value={row.description}
-                                    disabled={cpBusy}
-                                    aria-label="Description"
-                                    onChange={(e) => {
-                                      const value = e.target.value;
-                                      setCheckpointDraft((prev) =>
-                                        prev.map((r) =>
-                                          r.id === row.id ? { ...r, description: value } : r,
-                                        ),
-                                      );
-                                      markCheckpointDirty();
-                                    }}
-                                  />
-                                ) : (
-                                  <span>{row.description || "—"}</span>
-                                )}
-                              </td>
-                              <td className="pi-checkpoint-status">
-                                <button
-                                  type="button"
-                                  className={`pi-checkpoint-check-btn${row.checked ? " is-done" : ""}`}
-                                  disabled={!canEdit || cpBusy}
-                                  aria-pressed={row.checked}
-                                  onClick={() => onToggleCheckpoint(row.id)}
-                                >
-                                  {row.checked ? "Checked" : "Check"}
-                                </button>
-                              </td>
-                              {canEdit && (
-                                <td className="pi-checkpoint-col-actions">
-                                  <button
-                                    type="button"
-                                    className="pi-linkish danger"
-                                    disabled={cpBusy}
-                                    aria-label="Delete CheckPoint row"
-                                    onClick={() => onDeleteCheckpoint(row.id)}
-                                  >
-                                    Delete
-                                  </button>
+                            <Fragment key={`type:${group.type}`}>
+                              <tr className="pi-checkpoint-section-row">
+                                <td colSpan={colCount} className="pi-checkpoint-section-cell">
+                                  <div className="pi-checkpoint-section-bar">
+                                    <button
+                                      type="button"
+                                      className="pi-checkpoint-section-toggle"
+                                      aria-expanded={!collapsed}
+                                      aria-label={`${collapsed ? "Expand" : "Collapse"} ${group.type}`}
+                                      onClick={() =>
+                                        setCheckpointCollapsed((prev) => ({
+                                          ...prev,
+                                          [group.type]: !prev[group.type],
+                                        }))
+                                      }
+                                    >
+                                      <span className="pi-checkpoint-section-chevron" aria-hidden="true">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                          {collapsed ? (
+                                            <path d="M9 6l6 6-6 6" />
+                                          ) : (
+                                            <path d="M6 9l6 6 6-6" />
+                                          )}
+                                        </svg>
+                                      </span>
+                                    </button>
+                                    {canEdit ? (
+                                      <input
+                                        className="pi-checkpoint-section-title-input"
+                                        value={group.type === "Ungrouped" ? "" : group.type}
+                                        disabled={cpBusy}
+                                        placeholder="Type"
+                                        aria-label="Type section"
+                                        onChange={(e) => onRenameCheckpointType(group.type, e.target.value)}
+                                      />
+                                    ) : (
+                                      <span className="pi-checkpoint-section-title">{group.type}</span>
+                                    )}
+                                    {canReorder && (
+                                      <span className="pi-checkpoint-order-btns">
+                                        <button
+                                          type="button"
+                                          className="pi-checkpoint-order-btn"
+                                          disabled={cpBusy || typeIndex === 0}
+                                          aria-label={`Move type ${group.type} up`}
+                                          onClick={() => onMoveCheckpointType(typeIndex, -1)}
+                                        >
+                                          ↑
+                                        </button>
+                                        <button
+                                          type="button"
+                                          className="pi-checkpoint-order-btn"
+                                          disabled={cpBusy || typeIndex >= checkpointGroups.length - 1}
+                                          aria-label={`Move type ${group.type} down`}
+                                          onClick={() => onMoveCheckpointType(typeIndex, 1)}
+                                        >
+                                          ↓
+                                        </button>
+                                      </span>
+                                    )}
+                                  </div>
                                 </td>
-                              )}
-                            </tr>
+                              </tr>
+                              {!collapsed &&
+                                group.items.map((row, rowIndex) => (
+                                  <tr
+                                    key={row.id}
+                                    className={`pi-checkpoint-item-row${row.checked ? " is-checked" : ""}`}
+                                  >
+                                    <td className="pi-checkpoint-item-cell">
+                                      {canEdit ? (
+                                        <input
+                                          className="pi-checkpoint-cell-input"
+                                          value={row.item}
+                                          disabled={cpBusy}
+                                          aria-label="Item"
+                                          onChange={(e) => {
+                                            const value = e.target.value;
+                                            setCheckpointDraft((prev) =>
+                                              prev.map((r) => (r.id === row.id ? { ...r, item: value } : r)),
+                                            );
+                                            markCheckpointDirty();
+                                          }}
+                                        />
+                                      ) : (
+                                        <span>{row.item || "—"}</span>
+                                      )}
+                                    </td>
+                                    <td>
+                                      {canEdit ? (
+                                        <input
+                                          className="pi-checkpoint-cell-input"
+                                          value={row.description}
+                                          disabled={cpBusy}
+                                          aria-label="Description"
+                                          onChange={(e) => {
+                                            const value = e.target.value;
+                                            setCheckpointDraft((prev) =>
+                                              prev.map((r) =>
+                                                r.id === row.id ? { ...r, description: value } : r,
+                                              ),
+                                            );
+                                            markCheckpointDirty();
+                                          }}
+                                        />
+                                      ) : (
+                                        <span>{row.description || "—"}</span>
+                                      )}
+                                    </td>
+                                    <td className="pi-checkpoint-status">
+                                      <button
+                                        type="button"
+                                        className={`pi-checkpoint-check-btn${row.checked ? " is-done" : ""}`}
+                                        disabled={!canEdit || cpBusy}
+                                        aria-pressed={row.checked}
+                                        onClick={() => onToggleCheckpoint(row.id)}
+                                      >
+                                        {row.checked ? "Checked" : "Check"}
+                                      </button>
+                                    </td>
+                                    {canReorder && (
+                                      <td className="pi-checkpoint-col-order">
+                                        <span className="pi-checkpoint-order-btns">
+                                          <button
+                                            type="button"
+                                            className="pi-checkpoint-order-btn"
+                                            disabled={cpBusy || rowIndex === 0}
+                                            aria-label={`Move ${row.item || "row"} up`}
+                                            onClick={() => onMoveCheckpointRow(group.type, rowIndex, -1)}
+                                          >
+                                            ↑
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className="pi-checkpoint-order-btn"
+                                            disabled={cpBusy || rowIndex >= group.items.length - 1}
+                                            aria-label={`Move ${row.item || "row"} down`}
+                                            onClick={() => onMoveCheckpointRow(group.type, rowIndex, 1)}
+                                          >
+                                            ↓
+                                          </button>
+                                        </span>
+                                      </td>
+                                    )}
+                                    {canEdit && (
+                                      <td className="pi-checkpoint-col-actions">
+                                        <button
+                                          type="button"
+                                          className="pi-linkish danger"
+                                          disabled={cpBusy}
+                                          aria-label="Delete CheckPoint row"
+                                          onClick={() => onDeleteCheckpoint(row.id)}
+                                        >
+                                          Delete
+                                        </button>
+                                      </td>
+                                    )}
+                                  </tr>
+                                ))}
+                            </Fragment>
                           );
                         })
                       )}
@@ -1638,7 +1812,7 @@ export function ProjectsIssuesPage({
                       type="button"
                       className="pi-btn-primary"
                       disabled={cpBusy}
-                      onClick={() => onAddCheckpoint()}
+                      onClick={() => onOpenAddCheckpoint()}
                     >
                       + Add row
                     </button>
@@ -1649,7 +1823,7 @@ export function ProjectsIssuesPage({
                         disabled={cpBusy}
                         onClick={() => closeCheckpoints()}
                       >
-                        Cancel
+                        {checkpointDirty ? "Cancel" : "Close"}
                       </button>
                       <button
                         type="button"
@@ -1665,6 +1839,88 @@ export function ProjectsIssuesPage({
                   <p className="pi-checkpoint-hint">Only project leaders or Admin can edit CheckPoints.</p>
                 )}
               </div>
+
+              {checkpointAddOpen && (
+                <div className="pi-checkpoint-add-dialog" role="dialog" aria-labelledby="pi-checkpoint-add-title">
+                  <h3 id="pi-checkpoint-add-title">Add row</h3>
+                  <p className="pi-checkpoint-add-hint">Choose which Type to add into.</p>
+                  <div className="pi-checkpoint-add-modes">
+                    <label className="pi-checkpoint-add-mode">
+                      <input
+                        type="radio"
+                        name="checkpoint-add-type-mode"
+                        checked={checkpointAddTypeMode === "existing"}
+                        disabled={existingTypes.length === 0 || cpBusy}
+                        onChange={() => setCheckpointAddTypeMode("existing")}
+                      />
+                      Existing Type
+                    </label>
+                    <label className="pi-checkpoint-add-mode">
+                      <input
+                        type="radio"
+                        name="checkpoint-add-type-mode"
+                        checked={checkpointAddTypeMode === "new"}
+                        disabled={cpBusy}
+                        onChange={() => setCheckpointAddTypeMode("new")}
+                      />
+                      New Type
+                    </label>
+                  </div>
+                  {checkpointAddTypeMode === "existing" ? (
+                    <label className="pi-checkpoint-add-field">
+                      <span>Type</span>
+                      <select
+                        value={checkpointAddType}
+                        disabled={cpBusy || existingTypes.length === 0}
+                        onChange={(e) => setCheckpointAddType(e.target.value)}
+                      >
+                        {existingTypes.length === 0 ? (
+                          <option value="">No types yet</option>
+                        ) : (
+                          existingTypes.map((type) => (
+                            <option key={type} value={type}>
+                              {type}
+                            </option>
+                          ))
+                        )}
+                      </select>
+                    </label>
+                  ) : (
+                    <label className="pi-checkpoint-add-field">
+                      <span>New Type name</span>
+                      <input
+                        value={checkpointAddNewType}
+                        disabled={cpBusy}
+                        placeholder="e.g. Project information"
+                        onChange={(e) => setCheckpointAddNewType(e.target.value)}
+                      />
+                    </label>
+                  )}
+                  <div className="pi-checkpoint-add-actions">
+                    <button
+                      type="button"
+                      className="pi-btn-ghost"
+                      disabled={cpBusy}
+                      onClick={() => resetCheckpointAddDialog()}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      className="pi-btn-primary"
+                      disabled={
+                        cpBusy ||
+                        (checkpointAddTypeMode === "new"
+                          ? !checkpointAddNewType.trim()
+                          : !checkpointAddType.trim())
+                      }
+                      onClick={() => onConfirmAddCheckpoint()}
+                    >
+                      Add Item
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         );
