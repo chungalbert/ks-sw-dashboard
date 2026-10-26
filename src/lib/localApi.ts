@@ -461,6 +461,7 @@ export const localApi = {
       tpe_owner?: string;
       custom?: Record<string, string>;
       checkpoints?: ProjectCheckpoint[];
+      checkpoint_handover_date?: string;
     },
   ): Project {
     const store = load();
@@ -494,9 +495,14 @@ export const localApi = {
     if (patch.checkpoints !== undefined) {
       project.checkpoints = patch.checkpoints.map((item) => ({
         id: item.id,
-        text: item.text,
+        type: item.type ?? "",
+        item: item.item ?? item.text ?? "",
+        description: item.description ?? "",
         checked: Boolean(item.checked),
       }));
+    }
+    if (patch.checkpoint_handover_date !== undefined) {
+      project.checkpoint_handover_date = patch.checkpoint_handover_date;
     }
     save(store);
     return project;

@@ -23,6 +23,7 @@ import {
   type ProjectFieldPatch,
   type ProjectStandardKey,
 } from "../lib/projectsUiStore";
+import { buildDefaultCheckpointTemplate } from "../lib/checkpointTemplate";
 import { areProjectCheckpointsComplete } from "../lib/projectCheckpoints";
 import {
   isTaskOpen,
@@ -72,6 +73,20 @@ function mergeProjectDraft(project: Project, patch: ProjectFieldPatch | undefine
     tpe_owner: patch.tpe_owner !== undefined ? patch.tpe_owner : project.tpe_owner,
     custom: { ...(project.custom ?? {}), ...(patch.custom ?? {}) },
     checkpoints: patch.checkpoints !== undefined ? patch.checkpoints : project.checkpoints,
+    checkpoint_handover_date:
+      patch.checkpoint_handover_date !== undefined
+        ? patch.checkpoint_handover_date
+        : project.checkpoint_handover_date,
+  };
+}
+
+function emptyCheckpointRow(partial?: Partial<ProjectCheckpoint>): ProjectCheckpoint {
+  return {
+    id: crypto.randomUUID(),
+    type: partial?.type ?? "",
+    item: partial?.item ?? "",
+    description: partial?.description ?? "",
+    checked: Boolean(partial?.checked),
   };
 }
 
@@ -201,7 +216,7 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
   /** Project id whose CheckPoint handover modal is open. */
   const [checkpointProjectId, setCheckpointProjectId] = useState<string | null>(null);
   const [checkpointDraft, setCheckpointDraft] = useState<ProjectCheckpoint[]>([]);
-  const [checkpointAddText, setCheckpointAddText] = useState("");
+  const [checkpointHandoverDate, setCheckpointHandoverDate] = useState("");
 
   const setColFilter = <K extends keyof IssueColumnFilters>(key: K, value: IssueColumnFilters[K]) => {
     setColFilters((prev) => ({ ...prev, [key]: value }));
@@ -527,23 +542,58 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
     setShowNewIssue(false);
   };
 
+  const reloadCheckpointDraft = (projectId: string) => {
+    const p = projects.find((row) => row.id === projectId);
+    setCheckpointDraft([...(p?.checkpoints ?? [])]);
+    setCheckpointHandoverDate(p?.checkpoint_handover_date ?? "");
+  };
+
   const openCheckpoints = (project: Project) => {
     setCheckpointProjectId(project.id);
-    setCheckpointDraft([...(project.checkpoints ?? [])]);
-    setCheckpointAddText("");
+    const existing = [...(project.checkpoints ?? [])];
+    const handover = project.checkpoint_handover_date ?? "";
+    if (existing.length === 0 && leaderProjectIds.includes(project.id)) {
+      const seeded = buildDefaultCheckpointTemplate();
+      setCheckpointDraft(seeded);
+      setCheckpointHandoverDate(handover);
+      void (async () => {
+        setError("");
+        try {
+          await runSave(async () => {
+            await api.updateProject(project.id, {
+              checkpoints: seeded,
+              checkpoint_handover_date: handover,
+            });
+            await reload();
+          });
+        } catch (err) {
+          setError(err instanceof Error ? err.message : "CheckPoint seed failed");
+        }
+      })();
+      return;
+    }
+    setCheckpointDraft(existing);
+    setCheckpointHandoverDate(handover);
   };
 
   const closeCheckpoints = () => {
     setCheckpointProjectId(null);
     setCheckpointDraft([]);
-    setCheckpointAddText("");
+    setCheckpointHandoverDate("");
   };
 
-  const persistCheckpoints = async (projectId: string, next: ProjectCheckpoint[]) => {
+  const persistCheckpoints = async (
+    projectId: string,
+    next: ProjectCheckpoint[],
+    handoverDate = checkpointHandoverDate,
+  ) => {
     setError("");
     try {
       await runSave(async () => {
-        await api.updateProject(projectId, { checkpoints: next });
+        await api.updateProject(projectId, {
+          checkpoints: next,
+          checkpoint_handover_date: handoverDate,
+        });
         await reload();
       });
     } catch (err) {
@@ -563,7 +613,7 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
     try {
       await persistCheckpoints(checkpointProjectId, next);
     } catch {
-      setCheckpointDraft([...(projects.find((p) => p.id === checkpointProjectId)?.checkpoints ?? [])]);
+      reloadCheckpointDraft(checkpointProjectId);
     }
   };
 
@@ -574,24 +624,44 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
     try {
       await persistCheckpoints(checkpointProjectId, next);
     } catch {
-      setCheckpointDraft([...(projects.find((p) => p.id === checkpointProjectId)?.checkpoints ?? [])]);
+      reloadCheckpointDraft(checkpointProjectId);
     }
   };
 
   const onAddCheckpoint = async () => {
     if (!checkpointProjectId || !canEditCheckpoints(checkpointProjectId)) return;
-    const text = checkpointAddText.trim();
-    if (!text) return;
-    const next = [
-      ...checkpointDraft,
-      { id: crypto.randomUUID(), text, checked: false },
-    ];
+    const lastType = checkpointDraft[checkpointDraft.length - 1]?.type ?? "";
+    const next = [...checkpointDraft, emptyCheckpointRow({ type: lastType })];
     setCheckpointDraft(next);
-    setCheckpointAddText("");
     try {
       await persistCheckpoints(checkpointProjectId, next);
     } catch {
-      setCheckpointDraft([...(projects.find((p) => p.id === checkpointProjectId)?.checkpoints ?? [])]);
+      reloadCheckpointDraft(checkpointProjectId);
+    }
+  };
+
+  const onPatchCheckpointField = async (
+    itemId: string,
+    field: "type" | "item" | "description",
+    value: string,
+  ) => {
+    if (!checkpointProjectId || !canEditCheckpoints(checkpointProjectId)) return;
+    const next = checkpointDraft.map((row) => (row.id === itemId ? { ...row, [field]: value } : row));
+    setCheckpointDraft(next);
+    try {
+      await persistCheckpoints(checkpointProjectId, next);
+    } catch {
+      reloadCheckpointDraft(checkpointProjectId);
+    }
+  };
+
+  const onSaveHandoverDate = async (value: string) => {
+    if (!checkpointProjectId || !canEditCheckpoints(checkpointProjectId)) return;
+    setCheckpointHandoverDate(value);
+    try {
+      await persistCheckpoints(checkpointProjectId, checkpointDraft, value);
+    } catch {
+      reloadCheckpointDraft(checkpointProjectId);
     }
   };
 
@@ -1462,60 +1532,166 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
                 </button>
               </header>
               <div className="pi-modal-body">
-                {checkpointDraft.length === 0 ? (
-                  <p className="pi-checkpoint-empty">No CheckPoints yet. Add handover items below.</p>
-                ) : (
-                  <ul className="pi-checkpoint-list">
-                    {checkpointDraft.map((item) => (
-                      <li key={item.id} className="pi-checkpoint-item">
-                        <label className="pi-checkpoint-check">
-                          <input
-                            type="checkbox"
-                            checked={item.checked}
-                            disabled={!canEdit || cpBusy}
-                            onChange={() => void onToggleCheckpoint(item.id)}
-                          />
-                          <span className={item.checked ? "is-checked" : undefined}>{item.text || "—"}</span>
-                        </label>
-                        {canEdit && (
-                          <button
-                            type="button"
-                            className="pi-linkish danger"
-                            disabled={cpBusy}
-                            aria-label="Delete CheckPoint"
-                            onClick={() => void onDeleteCheckpoint(item.id)}
-                          >
-                            Delete
-                          </button>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                {canEdit ? (
-                  <form
-                    className="pi-checkpoint-add"
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      void onAddCheckpoint();
+                <label className="pi-checkpoint-handover">
+                  <span>Handover Date:</span>
+                  <input
+                    type="date"
+                    value={checkpointHandoverDate}
+                    disabled={!canEdit || cpBusy}
+                    onChange={(e) => setCheckpointHandoverDate(e.target.value)}
+                    onBlur={(e) => {
+                      if (!canEdit) return;
+                      const next = e.target.value;
+                      if (next === (cpProject?.checkpoint_handover_date ?? "")) return;
+                      void onSaveHandoverDate(next);
                     }}
-                  >
-                    <input
-                      type="text"
-                      value={checkpointAddText}
-                      onChange={(e) => setCheckpointAddText(e.target.value)}
-                      placeholder="New CheckPoint item"
-                      aria-label="New CheckPoint item"
-                      disabled={cpBusy}
-                    />
+                  />
+                </label>
+
+                <div className="pi-checkpoint-table-wrap">
+                  <table className="pi-checkpoint-table">
+                    <thead>
+                      <tr>
+                        <th scope="col">Type</th>
+                        <th scope="col">Item</th>
+                        <th scope="col">Description</th>
+                        <th scope="col">Check Status</th>
+                        {canEdit && <th scope="col" className="pi-checkpoint-col-actions" />}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {checkpointDraft.length === 0 ? (
+                        <tr>
+                          <td colSpan={canEdit ? 5 : 4} className="pi-checkpoint-empty-cell">
+                            No CheckPoints yet. Add a handover row below.
+                          </td>
+                        </tr>
+                      ) : (
+                        checkpointDraft.map((row, index) => {
+                          const prevType = index > 0 ? checkpointDraft[index - 1]?.type : null;
+                          const showType = row.type !== prevType;
+                          return (
+                            <tr key={row.id} className={row.checked ? "is-checked" : undefined}>
+                              <td className={`pi-checkpoint-type${showType ? "" : " is-continued"}`}>
+                                {canEdit ? (
+                                  <input
+                                    className="pi-checkpoint-cell-input"
+                                    value={row.type}
+                                    disabled={cpBusy}
+                                    aria-label="Type"
+                                    onChange={(e) => {
+                                      const value = e.target.value;
+                                      setCheckpointDraft((prev) =>
+                                        prev.map((r) => (r.id === row.id ? { ...r, type: value } : r)),
+                                      );
+                                    }}
+                                    onBlur={(e) => {
+                                      if (e.target.value === (cpProject?.checkpoints?.find((r) => r.id === row.id)?.type ?? "")) {
+                                        return;
+                                      }
+                                      void onPatchCheckpointField(row.id, "type", e.target.value);
+                                    }}
+                                  />
+                                ) : (
+                                  <span>{showType ? row.type || "—" : ""}</span>
+                                )}
+                              </td>
+                              <td>
+                                {canEdit ? (
+                                  <input
+                                    className="pi-checkpoint-cell-input"
+                                    value={row.item}
+                                    disabled={cpBusy}
+                                    aria-label="Item"
+                                    onChange={(e) => {
+                                      const value = e.target.value;
+                                      setCheckpointDraft((prev) =>
+                                        prev.map((r) => (r.id === row.id ? { ...r, item: value } : r)),
+                                      );
+                                    }}
+                                    onBlur={(e) => {
+                                      if (e.target.value === (cpProject?.checkpoints?.find((r) => r.id === row.id)?.item ?? "")) {
+                                        return;
+                                      }
+                                      void onPatchCheckpointField(row.id, "item", e.target.value);
+                                    }}
+                                  />
+                                ) : (
+                                  <span>{row.item || "—"}</span>
+                                )}
+                              </td>
+                              <td>
+                                {canEdit ? (
+                                  <input
+                                    className="pi-checkpoint-cell-input"
+                                    value={row.description}
+                                    disabled={cpBusy}
+                                    aria-label="Description"
+                                    onChange={(e) => {
+                                      const value = e.target.value;
+                                      setCheckpointDraft((prev) =>
+                                        prev.map((r) =>
+                                          r.id === row.id ? { ...r, description: value } : r,
+                                        ),
+                                      );
+                                    }}
+                                    onBlur={(e) => {
+                                      if (
+                                        e.target.value ===
+                                        (cpProject?.checkpoints?.find((r) => r.id === row.id)?.description ?? "")
+                                      ) {
+                                        return;
+                                      }
+                                      void onPatchCheckpointField(row.id, "description", e.target.value);
+                                    }}
+                                  />
+                                ) : (
+                                  <span>{row.description || "—"}</span>
+                                )}
+                              </td>
+                              <td className="pi-checkpoint-status">
+                                <button
+                                  type="button"
+                                  className={`pi-checkpoint-check-btn${row.checked ? " is-done" : ""}`}
+                                  disabled={!canEdit || cpBusy}
+                                  aria-pressed={row.checked}
+                                  onClick={() => void onToggleCheckpoint(row.id)}
+                                >
+                                  {row.checked ? "Checked" : "Check"}
+                                </button>
+                              </td>
+                              {canEdit && (
+                                <td className="pi-checkpoint-col-actions">
+                                  <button
+                                    type="button"
+                                    className="pi-linkish danger"
+                                    disabled={cpBusy}
+                                    aria-label="Delete CheckPoint row"
+                                    onClick={() => void onDeleteCheckpoint(row.id)}
+                                  >
+                                    Delete
+                                  </button>
+                                </td>
+                              )}
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                {canEdit ? (
+                  <div className="pi-checkpoint-add">
                     <button
-                      type="submit"
+                      type="button"
                       className="pi-btn-primary"
-                      disabled={!checkpointAddText.trim() || cpBusy}
+                      disabled={cpBusy}
+                      onClick={() => void onAddCheckpoint()}
                     >
-                      Add
+                      + Add row
                     </button>
-                  </form>
+                  </div>
                 ) : (
                   <p className="pi-checkpoint-hint">Only project leaders or Admin can edit CheckPoints.</p>
                 )}

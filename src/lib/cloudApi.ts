@@ -2,11 +2,12 @@ import { normalizeAnalyzedNotes, syncAnalyzedFields } from "./analyzed";
 import { credentialOrTransportMessage, isTransportFailure, NETWORK_MESSAGE } from "./loginError";
 import { getSupabase } from "./supabase";
 import {
-  checkpointsFromProjectRow,
-  parseProjectCheckpoints,
+  checkpointDocFromProjectRow,
   PROJECT_CHECKPOINTS_CUSTOM_KEY,
   serializeCheckpointsForCustom,
+  serializeCheckpointDoc,
   stripCheckpointsCustomKey,
+  toCheckpointDoc,
 } from "./projectCheckpoints";
 import {
   findStandardProjectColumn,
@@ -227,7 +228,7 @@ function normalizeProjectRow(row: Project): Project {
   if (LEGACY_TPE_OWNER_COLUMN_ID in custom) {
     delete custom[LEGACY_TPE_OWNER_COLUMN_ID];
   }
-  const checkpoints = checkpointsFromProjectRow({
+  const checkpointDoc = checkpointDocFromProjectRow({
     checkpoints: (row as Project & { checkpoints?: unknown }).checkpoints,
     custom,
   });
@@ -246,7 +247,8 @@ function normalizeProjectRow(row: Project): Project {
     project_owner: row.project_owner ?? "",
     tpe_owner,
     custom: customClean,
-    checkpoints,
+    checkpoints: checkpointDoc.items,
+    checkpoint_handover_date: checkpointDoc.handover_date,
   };
 }
 
@@ -569,19 +571,28 @@ export const cloudApi = {
     let nextCustom: Record<string, string> | undefined =
       patch.custom !== undefined ? { ...(base.custom ?? {}), ...patch.custom } : undefined;
 
-    if (patch.checkpoints !== undefined) {
-      const items = parseProjectCheckpoints(patch.checkpoints);
-      updates.checkpoints = items;
+    if (patch.checkpoints !== undefined || patch.checkpoint_handover_date !== undefined) {
+      const doc = serializeCheckpointDoc(
+        toCheckpointDoc(
+          patch.checkpoints ?? base.checkpoints ?? [],
+          patch.checkpoint_handover_date !== undefined
+            ? patch.checkpoint_handover_date
+            : (base.checkpoint_handover_date ?? ""),
+        ),
+      );
+      updates.checkpoints = doc;
       nextCustom = {
         ...(base.custom ?? {}),
         ...(nextCustom ?? {}),
-        [PROJECT_CHECKPOINTS_CUSTOM_KEY]: serializeCheckpointsForCustom(items),
+        [PROJECT_CHECKPOINTS_CUSTOM_KEY]: serializeCheckpointsForCustom(doc),
       };
     } else if (nextCustom !== undefined) {
       // Re-embed fallback key so unrelated custom column saves do not wipe CheckPoints.
       nextCustom = {
         ...nextCustom,
-        [PROJECT_CHECKPOINTS_CUSTOM_KEY]: serializeCheckpointsForCustom(base.checkpoints ?? []),
+        [PROJECT_CHECKPOINTS_CUSTOM_KEY]: serializeCheckpointsForCustom(
+          toCheckpointDoc(base.checkpoints ?? [], base.checkpoint_handover_date ?? ""),
+        ),
       };
     }
 
