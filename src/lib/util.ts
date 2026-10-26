@@ -31,7 +31,7 @@ export function usernameFromEmail(email: string, taken: Set<string>): string {
 export const DEFAULT_PASSWORD = "abcd1234";
 
 /** App version: `1.<latest merged feature PR#>`. Bump when that PR lands. */
-export const APP_VERSION = "1.98";
+export const APP_VERSION = "1.99";
 
 /**
  * Author + version label for landing footer and logged-in sidebar credit.
