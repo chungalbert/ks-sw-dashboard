@@ -178,17 +178,15 @@ function Shell() {
     feature: true,
     management: true,
   });
+  /** Open Projects detail for this id after navigating from Personnel Issues modal. */
+  const [pendingProjectOpen, setPendingProjectOpen] = useState<string | null>(null);
   const personnelRole = user ? normalizePersonnelRole(user) : "DE";
   const limitedWorkspace = isWorkspaceLimitedRole(personnelRole);
-  const isLeader = Boolean(user?.is_admin || role === "leader");
-  // DQA/PM/SA: only Security + INV&PCR. Otherwise Personnel is leader-gated;
-  // FEATURE peers (Tool, Note, Chat, 教學) stay for Admin/DM/DL/DE.
+  // DQA/PM/SA: only Security + INV&PCR. Admin/DM/DL/DE get full nav including Personnel.
   const groups = NAV_GROUPS.map((group) => {
     let items = group.items;
     if (limitedWorkspace) {
       items = items.filter((item) => canAccessView(personnelRole, item.id));
-    } else if (!isLeader) {
-      items = items.filter((item) => item.id !== "people");
     }
     return { ...group, items };
   }).filter((group) => group.items.length > 0);
@@ -198,9 +196,7 @@ function Shell() {
     ? canAccessView(personnelRole, resolvedView)
       ? resolvedView
       : "security"
-    : !isLeader && resolvedView === "people"
-      ? "home"
-      : resolvedView;
+    : resolvedView;
   const initial = (user?.display_name || user?.username || "?").trim().charAt(0).toUpperCase();
   const isProjectIssue = currentView === "projects";
   const isPersonnel = currentView === "people";
@@ -383,10 +379,21 @@ function Shell() {
                 currentView !== "inv-pcr" && <ReminderBanner />}
               {currentView === "home" && <DashboardPage />}
               {currentView === "projects" && (
-                <ProjectsIssuesPage onGoDashboard={() => setView("home")} />
+                <ProjectsIssuesPage
+                  onGoDashboard={() => setView("home")}
+                  openProjectId={pendingProjectOpen}
+                  onOpenProjectConsumed={() => setPendingProjectOpen(null)}
+                />
               )}
               {currentView === "people" && (
-                <PeoplePage onGoDashboard={() => setView("home")} />
+                <PeoplePage
+                  onGoDashboard={() => setView("home")}
+                  onOpenProject={(projectId) => {
+                    setPendingProjectOpen(projectId);
+                    setProjectId(projectId);
+                    setView("projects");
+                  }}
+                />
               )}
               {currentView === "security" && (
                 <SecurityPage onGoDashboard={() => setView("home")} />

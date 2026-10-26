@@ -161,7 +161,16 @@ function AnalysisInline({
   );
 }
 
-export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => void }) {
+export function ProjectsIssuesPage({
+  onGoDashboard,
+  openProjectId,
+  onOpenProjectConsumed,
+}: {
+  onGoDashboard: () => void;
+  /** When set (e.g. from Personnel Issues modal), open that project’s detail view once. */
+  openProjectId?: string | null;
+  onOpenProjectConsumed?: () => void;
+}) {
   const { user } = useAuth();
   const {
     projects,
@@ -249,6 +258,18 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
     setColumnsLoading(true);
     void refreshProjectColumns();
   }, []);
+
+  useEffect(() => {
+    if (!openProjectId) return;
+    setProjectId(openProjectId);
+    setMode("detail");
+    setStatusFilter("all");
+    setQuery("");
+    setColFilters(EMPTY_ISSUE_COLUMN_FILTERS);
+    setMoreOpen(false);
+    setShowNewIssue(false);
+    onOpenProjectConsumed?.();
+  }, [openProjectId, setProjectId, onOpenProjectConsumed]);
 
   const nameOf = (id: string | null) => profiles.find((p) => p.id === id)?.display_name ?? "Unassigned";
 
