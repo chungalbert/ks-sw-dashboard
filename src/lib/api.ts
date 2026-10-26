@@ -158,6 +158,7 @@ function overlayHasValues(overlay: ProjectFieldPatch | undefined): boolean {
       overlay.owner ||
       overlay.project_owner ||
       overlay.tpe_owner ||
+      (overlay.checkpoints && overlay.checkpoints.length > 0) ||
       (overlay.custom && Object.keys(overlay.custom).length > 0),
   );
 }

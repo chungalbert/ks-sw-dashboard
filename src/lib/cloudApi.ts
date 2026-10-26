@@ -2,6 +2,13 @@ import { normalizeAnalyzedNotes, syncAnalyzedFields } from "./analyzed";
 import { credentialOrTransportMessage, isTransportFailure, NETWORK_MESSAGE } from "./loginError";
 import { getSupabase } from "./supabase";
 import {
+  checkpointsFromProjectRow,
+  parseProjectCheckpoints,
+  PROJECT_CHECKPOINTS_CUSTOM_KEY,
+  serializeCheckpointsForCustom,
+  stripCheckpointsCustomKey,
+} from "./projectCheckpoints";
+import {
   findStandardProjectColumn,
   isReservedProjectColumnLabel,
   isStandardProjectColumnId,
@@ -220,6 +227,11 @@ function normalizeProjectRow(row: Project): Project {
   if (LEGACY_TPE_OWNER_COLUMN_ID in custom) {
     delete custom[LEGACY_TPE_OWNER_COLUMN_ID];
   }
+  const checkpoints = checkpointsFromProjectRow({
+    checkpoints: (row as Project & { checkpoints?: unknown }).checkpoints,
+    custom,
+  });
+  const customClean = stripCheckpointsCustomKey(custom);
   return {
     ...row,
     lenovo_name: row.lenovo_name ?? "",
@@ -233,7 +245,8 @@ function normalizeProjectRow(row: Project): Project {
     owner: row.owner ?? "",
     project_owner: row.project_owner ?? "",
     tpe_owner,
-    custom,
+    custom: customClean,
+    checkpoints,
   };
 }
 
@@ -534,7 +547,7 @@ export const cloudApi = {
     const base = projects.find((p) => p.id === projectId);
     if (!base) throw new Error("找不到專案");
 
-    const updates: Record<string, string | Record<string, string>> = {};
+    const updates: Record<string, string | Record<string, string> | unknown> = {};
     if (patch.name !== undefined) {
       const name = patch.name.trim();
       if (!name) throw new Error("專案名稱不能空白");
@@ -552,19 +565,57 @@ export const cloudApi = {
     if (patch.owner !== undefined) updates.owner = patch.owner.trim();
     if (patch.project_owner !== undefined) updates.project_owner = patch.project_owner.trim();
     if (patch.tpe_owner !== undefined) updates.tpe_owner = patch.tpe_owner.trim();
-    if (patch.custom !== undefined) {
-      updates.custom = { ...(base.custom ?? {}), ...patch.custom };
+
+    let nextCustom: Record<string, string> | undefined =
+      patch.custom !== undefined ? { ...(base.custom ?? {}), ...patch.custom } : undefined;
+
+    if (patch.checkpoints !== undefined) {
+      const items = parseProjectCheckpoints(patch.checkpoints);
+      updates.checkpoints = items;
+      nextCustom = {
+        ...(base.custom ?? {}),
+        ...(nextCustom ?? {}),
+        [PROJECT_CHECKPOINTS_CUSTOM_KEY]: serializeCheckpointsForCustom(items),
+      };
+    } else if (nextCustom !== undefined) {
+      // Re-embed fallback key so unrelated custom column saves do not wipe CheckPoints.
+      nextCustom = {
+        ...nextCustom,
+        [PROJECT_CHECKPOINTS_CUSTOM_KEY]: serializeCheckpointsForCustom(base.checkpoints ?? []),
+      };
     }
+
+    if (nextCustom !== undefined) updates.custom = nextCustom;
     if (Object.keys(updates).length === 0) return base;
 
-    const { data, error } = await sb()
-      .from("projects")
-      .update(updates)
-      .eq("id", projectId)
-      .select()
-      .single();
-    if (error) throw error;
-    return normalizeProjectRow(data as Project);
+    const runUpdate = async (payload: Record<string, unknown>) => {
+      const { data, error } = await sb()
+        .from("projects")
+        .update(payload)
+        .eq("id", projectId)
+        .select()
+        .single();
+      if (error) throw error;
+      return normalizeProjectRow(data as Project);
+    };
+
+    try {
+      return await runUpdate(updates);
+    } catch (err) {
+      // Pre-migration / stale Data API cache: projects.checkpoints missing.
+      // Custom fallback key still persists CheckPoints until neon/project-checkpoints.sql + refresh.
+      const msg = err instanceof Error ? err.message : String(err);
+      const code =
+        err && typeof err === "object" && "code" in err ? String((err as { code?: unknown }).code ?? "") : "";
+      const missingCheckpointsCol =
+        patch.checkpoints !== undefined &&
+        /checkpoints/i.test(msg) &&
+        (/column|schema cache|Could not find|PGRST204/i.test(msg) || code === "PGRST204");
+      if (!missingCheckpointsCol) throw err;
+      const { checkpoints: _drop, ...rest } = updates;
+      if (Object.keys(rest).length === 0) throw err;
+      return await runUpdate(rest);
+    }
   },
 
   /** Ask PostgREST to reload its schema cache (admin-only SECURITY DEFINER). */

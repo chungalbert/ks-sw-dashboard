@@ -12,6 +12,7 @@ import type {
   PersonnelRole,
   Profile,
   Project,
+  ProjectCheckpoint,
   ProjectMember,
   Role,
   Task,
@@ -459,6 +460,7 @@ export const localApi = {
       project_owner?: string;
       tpe_owner?: string;
       custom?: Record<string, string>;
+      checkpoints?: ProjectCheckpoint[];
     },
   ): Project {
     const store = load();
@@ -488,6 +490,13 @@ export const localApi = {
     if (patch.tpe_owner !== undefined) project.tpe_owner = patch.tpe_owner.trim();
     if (patch.custom !== undefined) {
       project.custom = { ...(project.custom ?? {}), ...patch.custom };
+    }
+    if (patch.checkpoints !== undefined) {
+      project.checkpoints = patch.checkpoints.map((item) => ({
+        id: item.id,
+        text: item.text,
+        checked: Boolean(item.checked),
+      }));
     }
     save(store);
     return project;

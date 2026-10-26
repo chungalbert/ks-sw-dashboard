@@ -36,7 +36,9 @@ create table if not exists public.projects (
   project_owner text not null default '',
   -- TPE OWNER; distinct from owner (PROJECT LEADER) and project_owner (Owner).
   tpe_owner text not null default '',
-  custom jsonb not null default '{}'::jsonb
+  custom jsonb not null default '{}'::jsonb,
+  -- Handover CheckPoints (Actions column). Incremental DBs: neon/project-checkpoints.sql.
+  checkpoints jsonb not null default '[]'::jsonb
 );
 
 create table if not exists public.project_columns (
