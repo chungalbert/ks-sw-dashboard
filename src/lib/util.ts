@@ -30,12 +30,27 @@ export function usernameFromEmail(email: string, taken: Set<string>): string {
 
 export const DEFAULT_PASSWORD = "abcd1234";
 
-/** App version: `1.<latest merged feature PR#>`. Bump when that PR lands. */
+/**
+ * Footer version from GitHub PR number (rollover every 100 PRs).
+ * `major = floor((pr - 1) / 100) + 1`, `minor = padStart(pr % 100, 2)` (`00` when divisible by 100).
+ * Examples: #94 → `1.94`, #100 → `1.00`, #101 → `2.01`, #102 → `2.02`.
+ */
+export function appVersionFromPr(pr: number): string {
+  const n = Math.max(1, Math.floor(pr));
+  const major = Math.floor((n - 1) / 100) + 1;
+  const minor = String(n % 100).padStart(2, "0");
+  return `${major}.${minor}`;
+}
+
+/**
+ * App version for the landing/sidebar footer. Bump to `appVersionFromPr(<this PR#>)`
+ * when that feature PR lands (see preferences.md).
+ */
 export const APP_VERSION = "1.101";
 
 /**
  * Author + version label for landing footer and logged-in sidebar credit.
- * Format: `KSSW_Albert 1.<PR#>` (brand + author Albert + APP_VERSION).
+ * Format: `KSSW_Albert <major>.<minor>` (brand + author Albert + APP_VERSION).
  */
 export const LANDING_FOOTER_LABEL = `KSSW_Albert ${APP_VERSION}`;
 

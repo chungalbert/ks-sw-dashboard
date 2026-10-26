@@ -2882,10 +2882,20 @@ th { color: var(--muted); font-weight: 500; font-size: 12px; }
   padding: 18px 12px !important;
 }
 
-.pi-checkpoint-add {
+.pi-checkpoint-add,
+.pi-checkpoint-footer {
   display: flex;
   gap: 8px;
   align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.pi-checkpoint-footer-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-left: auto;
 }
 
 .pi-no {
