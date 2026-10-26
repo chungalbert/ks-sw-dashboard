@@ -23,6 +23,7 @@ import {
   type ProjectFieldPatch,
   type ProjectStandardKey,
 } from "../lib/projectsUiStore";
+import { areProjectCheckpointsComplete } from "../lib/projectCheckpoints";
 import {
   isTaskOpen,
   normalizePersonnelRole,
@@ -30,6 +31,7 @@ import {
   type AnalyzedNote,
   type Profile,
   type Project,
+  type ProjectCheckpoint,
   type ProjectColumn,
   type Task,
   type TaskStatus,
@@ -69,6 +71,7 @@ function mergeProjectDraft(project: Project, patch: ProjectFieldPatch | undefine
     project_owner: patch.project_owner !== undefined ? patch.project_owner : project.project_owner,
     tpe_owner: patch.tpe_owner !== undefined ? patch.tpe_owner : project.tpe_owner,
     custom: { ...(project.custom ?? {}), ...(patch.custom ?? {}) },
+    checkpoints: patch.checkpoints !== undefined ? patch.checkpoints : project.checkpoints,
   };
 }
 
@@ -195,6 +198,10 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
   const [analyzed, setAnalyzed] = useState("");
   const [showNewIssue, setShowNewIssue] = useState(false);
   const [colFilters, setColFilters] = useState<IssueColumnFilters>(EMPTY_ISSUE_COLUMN_FILTERS);
+  /** Project id whose CheckPoint handover modal is open. */
+  const [checkpointProjectId, setCheckpointProjectId] = useState<string | null>(null);
+  const [checkpointDraft, setCheckpointDraft] = useState<ProjectCheckpoint[]>([]);
+  const [checkpointAddText, setCheckpointAddText] = useState("");
 
   const setColFilter = <K extends keyof IssueColumnFilters>(key: K, value: IssueColumnFilters[K]) => {
     setColFilters((prev) => ({ ...prev, [key]: value }));
@@ -518,6 +525,74 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
     setColFilters(EMPTY_ISSUE_COLUMN_FILTERS);
     setMoreOpen(false);
     setShowNewIssue(false);
+  };
+
+  const openCheckpoints = (project: Project) => {
+    setCheckpointProjectId(project.id);
+    setCheckpointDraft([...(project.checkpoints ?? [])]);
+    setCheckpointAddText("");
+  };
+
+  const closeCheckpoints = () => {
+    setCheckpointProjectId(null);
+    setCheckpointDraft([]);
+    setCheckpointAddText("");
+  };
+
+  const persistCheckpoints = async (projectId: string, next: ProjectCheckpoint[]) => {
+    setError("");
+    try {
+      await runSave(async () => {
+        await api.updateProject(projectId, { checkpoints: next });
+        await reload();
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "CheckPoint save failed");
+      throw err;
+    }
+  };
+
+  const canEditCheckpoints = (projectId: string) => leaderProjectIds.includes(projectId);
+
+  const onToggleCheckpoint = async (itemId: string) => {
+    if (!checkpointProjectId || !canEditCheckpoints(checkpointProjectId)) return;
+    const next = checkpointDraft.map((item) =>
+      item.id === itemId ? { ...item, checked: !item.checked } : item,
+    );
+    setCheckpointDraft(next);
+    try {
+      await persistCheckpoints(checkpointProjectId, next);
+    } catch {
+      setCheckpointDraft([...(projects.find((p) => p.id === checkpointProjectId)?.checkpoints ?? [])]);
+    }
+  };
+
+  const onDeleteCheckpoint = async (itemId: string) => {
+    if (!checkpointProjectId || !canEditCheckpoints(checkpointProjectId)) return;
+    const next = checkpointDraft.filter((item) => item.id !== itemId);
+    setCheckpointDraft(next);
+    try {
+      await persistCheckpoints(checkpointProjectId, next);
+    } catch {
+      setCheckpointDraft([...(projects.find((p) => p.id === checkpointProjectId)?.checkpoints ?? [])]);
+    }
+  };
+
+  const onAddCheckpoint = async () => {
+    if (!checkpointProjectId || !canEditCheckpoints(checkpointProjectId)) return;
+    const text = checkpointAddText.trim();
+    if (!text) return;
+    const next = [
+      ...checkpointDraft,
+      { id: crypto.randomUUID(), text, checked: false },
+    ];
+    setCheckpointDraft(next);
+    setCheckpointAddText("");
+    try {
+      await persistCheckpoints(checkpointProjectId, next);
+    } catch {
+      setCheckpointDraft([...(projects.find((p) => p.id === checkpointProjectId)?.checkpoints ?? [])]);
+    }
   };
 
   const backToList = () => {
@@ -1038,8 +1113,18 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
                       })}
                       <td>
                         <div className="pi-row-actions">
-                          <button type="button" className="pi-linkish" onClick={() => openProject(project.id)}>
-                            Open
+                          <button
+                            type="button"
+                            className="pi-linkish pi-checkpoint-btn"
+                            onClick={() => openCheckpoints(draft)}
+                            title="Project handover CheckPoints"
+                          >
+                            CheckPoint
+                            {areProjectCheckpointsComplete(draft.checkpoints) && (
+                              <span className="pi-checkpoint-done" aria-label="All CheckPoints complete">
+                                ✓
+                              </span>
+                            )}
                           </button>
                           {leaderProjectIds.includes(project.id) && (
                             <button
@@ -1342,6 +1427,103 @@ export function ProjectsIssuesPage({ onGoDashboard }: { onGoDashboard: () => voi
           </div>
         </>
       )}
+
+      {checkpointProjectId && (() => {
+        const cpProject = projects.find((p) => p.id === checkpointProjectId);
+        const canEdit = canEditCheckpoints(checkpointProjectId);
+        const cpBusy = saveStatus.kind === "saving";
+        return (
+          <div
+            className="pi-modal-backdrop"
+            role="presentation"
+            onClick={() => !cpBusy && closeCheckpoints()}
+          >
+            <div
+              className="pi-modal pi-checkpoint-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="pi-checkpoint-title"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <header className="pi-modal-head">
+                <h2 id="pi-checkpoint-title">
+                  CheckPoint
+                  {cpProject?.name ? (
+                    <span className="pi-checkpoint-project">{cpProject.name}</span>
+                  ) : null}
+                </h2>
+                <button
+                  type="button"
+                  className="pi-modal-close"
+                  aria-label="Close"
+                  onClick={() => closeCheckpoints()}
+                >
+                  ×
+                </button>
+              </header>
+              <div className="pi-modal-body">
+                {checkpointDraft.length === 0 ? (
+                  <p className="pi-checkpoint-empty">No CheckPoints yet. Add handover items below.</p>
+                ) : (
+                  <ul className="pi-checkpoint-list">
+                    {checkpointDraft.map((item) => (
+                      <li key={item.id} className="pi-checkpoint-item">
+                        <label className="pi-checkpoint-check">
+                          <input
+                            type="checkbox"
+                            checked={item.checked}
+                            disabled={!canEdit || cpBusy}
+                            onChange={() => void onToggleCheckpoint(item.id)}
+                          />
+                          <span className={item.checked ? "is-checked" : undefined}>{item.text || "—"}</span>
+                        </label>
+                        {canEdit && (
+                          <button
+                            type="button"
+                            className="pi-linkish danger"
+                            disabled={cpBusy}
+                            aria-label="Delete CheckPoint"
+                            onClick={() => void onDeleteCheckpoint(item.id)}
+                          >
+                            Delete
+                          </button>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {canEdit ? (
+                  <form
+                    className="pi-checkpoint-add"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      void onAddCheckpoint();
+                    }}
+                  >
+                    <input
+                      type="text"
+                      value={checkpointAddText}
+                      onChange={(e) => setCheckpointAddText(e.target.value)}
+                      placeholder="New CheckPoint item"
+                      aria-label="New CheckPoint item"
+                      disabled={cpBusy}
+                    />
+                    <button
+                      type="submit"
+                      className="pi-btn-primary"
+                      disabled={!checkpointAddText.trim() || cpBusy}
+                    >
+                      Add
+                    </button>
+                  </form>
+                ) : (
+                  <p className="pi-checkpoint-hint">Only project leaders or Admin can edit CheckPoints.</p>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

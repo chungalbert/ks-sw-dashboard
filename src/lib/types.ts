@@ -148,6 +148,13 @@ export interface ProjectColumn {
   label: string;
 }
 
+/** One handover checklist item on a project (Actions → CheckPoint). */
+export interface ProjectCheckpoint {
+  id: string;
+  text: string;
+  checked: boolean;
+}
+
 export interface Project {
   id: string;
   /** Compal project name (primary display name). */
@@ -176,6 +183,8 @@ export interface Project {
   tpe_owner?: string;
   /** Values for user-defined Projects columns. */
   custom?: Record<string, string>;
+  /** Handover CheckPoint items (Neon `checkpoints` jsonb + custom fallback). */
+  checkpoints?: ProjectCheckpoint[];
 }
 
 export interface ProjectMember {

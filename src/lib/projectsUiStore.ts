@@ -1,4 +1,4 @@
-import type { Project, ProjectColumn } from "./types";
+import type { Project, ProjectCheckpoint, ProjectColumn } from "./types";
 
 const KEY = "awb-projects-ui-v1";
 const LOCAL_COLUMNS_SEEDED_KEY = "awb-projects-columns-seeded-v1";
@@ -285,6 +285,7 @@ export type ProjectFieldPatch = {
   project_owner?: string;
   tpe_owner?: string;
   custom?: Record<string, string>;
+  checkpoints?: ProjectCheckpoint[];
 };
 
 interface ProjectOverlay extends ProjectFieldPatch {}
@@ -696,6 +697,7 @@ export const projectsUiStore = {
       project_owner: overlay.project_owner ?? project.project_owner ?? "",
       tpe_owner: overlay.tpe_owner ?? project.tpe_owner ?? "",
       custom: { ...(project.custom ?? {}), ...(overlay.custom ?? {}) },
+      checkpoints: overlay.checkpoints ?? project.checkpoints ?? [],
     };
   },
 
@@ -724,9 +726,17 @@ export const projectsUiStore = {
     if (patch.custom !== undefined) {
       next.custom = { ...(prev.custom ?? {}), ...patch.custom };
     }
+    if (patch.checkpoints !== undefined) {
+      next.checkpoints = patch.checkpoints;
+    }
 
     state.overlays[projectId] = next;
     save(state);
-    return projectsUiStore.mergeProject({ ...base, ...next, custom: { ...(base.custom ?? {}), ...(next.custom ?? {}) } });
+    return projectsUiStore.mergeProject({
+      ...base,
+      ...next,
+      custom: { ...(base.custom ?? {}), ...(next.custom ?? {}) },
+      checkpoints: next.checkpoints ?? base.checkpoints ?? [],
+    });
   },
 };
