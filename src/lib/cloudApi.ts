@@ -561,9 +561,17 @@ export const cloudApi = {
   },
 
   async updateProject(projectId: string, patch: ProjectFieldPatch): Promise<Project> {
-    const projects = await cloudApi.listProjects();
-    const base = projects.find((p) => p.id === projectId);
-    if (!base) throw new Error("找不到專案");
+    // Fetch by id — do NOT listProjects()+find. Neon Data API can briefly return an
+    // incomplete/empty list while the UI still shows a retained prior list (StoreContext
+    // retainPrior). CheckPoint Save then threw「找不到專案」even though the row was visible.
+    const { data: rawBase, error: loadError } = await sb()
+      .from("projects")
+      .select("*")
+      .eq("id", projectId)
+      .maybeSingle();
+    if (loadError) throwPostgrestError(loadError);
+    if (!rawBase) throw new Error("找不到專案");
+    const base = normalizeProjectRow(rawBase as Project);
 
     const updates: Record<string, string | Record<string, string> | unknown> = {};
     if (patch.name !== undefined) {

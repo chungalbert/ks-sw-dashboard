@@ -586,6 +586,7 @@ export function ProjectsIssuesPage({
   };
 
   const openCheckpoints = (project: Project) => {
+    setError("");
     setCheckpointProjectId(project.id);
     setCheckpointCollapsed({});
     setCheckpointOrderLocked(false);
