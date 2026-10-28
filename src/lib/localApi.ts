@@ -20,7 +20,13 @@ import type {
   WorkLogEntryPatch,
   WorkLogType,
 } from "./types";
-import { NOTE_COLORS, normalizePersonnelRole, normalizeTaskStatus, WORK_LOG_TYPES } from "./types";
+import {
+  canManageProjectsIssues,
+  NOTE_COLORS,
+  normalizePersonnelRole,
+  normalizeTaskStatus,
+  WORK_LOG_TYPES,
+} from "./types";
 import { DEFAULT_PASSWORD, sha256, usernameFromEmail } from "./util";
 
 const KEY = "awb-store-v1";
@@ -410,7 +416,7 @@ export const localApi = {
     const store = load();
     const me = store.sessionUserId;
     const user = store.profiles.find((p) => p.id === me);
-    if (user?.is_admin) return store.projects;
+    if (user && canManageProjectsIssues(normalizePersonnelRole(user))) return store.projects;
     const ids = new Set(store.members.filter((m) => m.user_id === me).map((m) => m.project_id));
     return store.projects.filter((p) => ids.has(p.id));
   },
@@ -516,7 +522,9 @@ export const localApi = {
     const store = load();
     const me = store.sessionUserId;
     const user = store.profiles.find((p) => p.id === me);
-    if (user?.is_admin) return store.projects.map((p) => p.id);
+    if (user && canManageProjectsIssues(normalizePersonnelRole(user))) {
+      return store.projects.map((p) => p.id);
+    }
     return store.members.filter((m) => m.user_id === me && m.role === "leader").map((m) => m.project_id);
   },
 
@@ -543,7 +551,7 @@ export const localApi = {
   myRole(projectId: string): "leader" | "member" | null {
     const store = load();
     const user = store.profiles.find((p) => p.id === store.sessionUserId);
-    if (user?.is_admin) return "leader";
+    if (user && canManageProjectsIssues(normalizePersonnelRole(user))) return "leader";
     return (
       store.members.find(
         (m) => m.project_id === projectId && m.user_id === store.sessionUserId,

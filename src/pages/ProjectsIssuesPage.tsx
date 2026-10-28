@@ -30,6 +30,7 @@ import {
   groupCheckpointsByType,
 } from "../lib/projectCheckpoints";
 import {
+  canManageProjectsIssues,
   isTaskOpen,
   normalizePersonnelRole,
   TASK_STATUSES,
@@ -253,11 +254,11 @@ export function ProjectsIssuesPage({
     setColFilters((prev) => ({ ...prev, [key]: value }));
   };
 
-  /** Match Personnel: Neon overlays may set personnel_role Admin while raw is_admin lags. */
-  const isAdmin = Boolean(user && normalizePersonnelRole(user) === "Admin");
-  const canCreate = Boolean(isAdmin || role === "leader");
-  /** Column tools (+ ADD / Remove / reorder) only while Admin is in edit mode on the list. */
-  const canManageColumns = isAdmin && mode === "list" && editMode;
+  /** Admin + DL: full Projects & Issues privileges (edit/columns/CheckPoint/create). */
+  const canElevateProjects = Boolean(user && canManageProjectsIssues(normalizePersonnelRole(user)));
+  const canCreate = Boolean(canElevateProjects || role === "leader");
+  /** Column tools (+ ADD / Remove / reorder) only while elevated user is in edit mode on the list. */
+  const canManageColumns = canElevateProjects && mode === "list" && editMode;
   const visibleColumns = editMode ? draftColumns : managedColumns;
   const editDirty =
     editMode &&
@@ -365,7 +366,7 @@ export function ProjectsIssuesPage({
   };
 
   const enterEditMode = () => {
-    if (!isAdmin || mode !== "list") return;
+    if (!canElevateProjects || mode !== "list") return;
     setError("");
     closeColumnPopovers();
     setDraftColumns(managedColumns.map((c) => ({ ...c })));
@@ -389,7 +390,7 @@ export function ProjectsIssuesPage({
   };
 
   const saveEditMode = async () => {
-    if (!isAdmin || !editMode) return;
+    if (!canElevateProjects || !editMode) return;
     if (!editDirty) {
       exitEditModeLocal();
       return;
@@ -433,8 +434,8 @@ export function ProjectsIssuesPage({
 
   const onAddProjectColumn = (event: FormEvent) => {
     event.preventDefault();
-    if (!isAdmin || !editMode) {
-      setError("只有管理員可以在編輯模式新增欄位");
+    if (!canElevateProjects || !editMode) {
+      setError("只有 Admin 或 DL 可以在編輯模式新增欄位");
       return;
     }
     setError("");
@@ -450,8 +451,8 @@ export function ProjectsIssuesPage({
 
   const onRemoveProjectColumn = (event: FormEvent) => {
     event.preventDefault();
-    if (!isAdmin || !editMode) {
-      setError("只有管理員可以在編輯模式刪除欄位");
+    if (!canElevateProjects || !editMode) {
+      setError("只有 Admin 或 DL 可以在編輯模式刪除欄位");
       return;
     }
     const col = draftColumns.find((c) => c.id === removeColId);
@@ -858,7 +859,7 @@ export function ProjectsIssuesPage({
     }
   };
 
-  const canManage = Boolean(project && (isAdmin || role === "leader"));
+  const canManage = Boolean(project && (canElevateProjects || role === "leader"));
   const canDeleteProject = Boolean(
     mode === "detail" && project && leaderProjectIds.includes(project.id),
   );
@@ -910,7 +911,7 @@ export function ProjectsIssuesPage({
           <div className="pi-status-slot">
             {listLoading ? <LoadingIndicator /> : <SavingIndicator status={saveStatus} />}
           </div>
-          {isAdmin && mode === "list" && !editMode && (
+          {canElevateProjects && mode === "list" && !editMode && (
             <button
               type="button"
               className="pi-btn-primary pi-edit-entry-btn"
@@ -922,7 +923,7 @@ export function ProjectsIssuesPage({
               Edit
             </button>
           )}
-          {isAdmin && mode === "list" && editMode && (
+          {canElevateProjects && mode === "list" && editMode && (
             <>
               <button
                 type="button"
@@ -1185,7 +1186,7 @@ export function ProjectsIssuesPage({
               ) : (
                 projectRows.map((project) => {
                   const draft = mergeProjectDraft(project, editMode ? draftPatches[project.id] : undefined);
-                  const canEditFields = isAdmin && editMode;
+                  const canEditFields = canElevateProjects && editMode;
                   const busy = busyId === project.id || busyId === "edit-save";
                   return (
                     <tr key={project.id}>
@@ -1888,7 +1889,7 @@ export function ProjectsIssuesPage({
                     </div>
                   </div>
                 ) : (
-                  <p className="pi-checkpoint-hint">Only project leaders or Admin can edit CheckPoints.</p>
+                  <p className="pi-checkpoint-hint">Only project leaders, Admin, or DL can edit CheckPoints.</p>
                 )}
               </div>
 

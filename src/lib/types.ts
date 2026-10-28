@@ -149,6 +149,14 @@ export function canViewWorkLog(role: PersonnelRole): boolean {
   return !isWorkspaceLimitedRole(role);
 }
 
+/**
+ * Projects & Issues page elevated access (same as Admin for that page):
+ * edit mode, columns, CheckPoint, create/delete. Personnel Add Member/ACTIONS stay Admin-only.
+ */
+export function canManageProjectsIssues(role: PersonnelRole): boolean {
+  return role === "Admin" || role === "DL";
+}
+
 /** Spreadsheet Type column for Work Log. */
 export const WORK_LOG_TYPES = ["PCR", "INV", "Bootleg", "SPB", "Formal", "IPU", "Sum"] as const;
 export type WorkLogType = (typeof WORK_LOG_TYPES)[number];
