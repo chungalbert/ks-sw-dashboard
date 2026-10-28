@@ -30,6 +30,7 @@ import {
   groupCheckpointsByType,
 } from "../lib/projectCheckpoints";
 import {
+  canEditProjectCheckpoints,
   canManageProjectsIssues,
   isTaskOpen,
   normalizePersonnelRole,
@@ -254,8 +255,11 @@ export function ProjectsIssuesPage({
     setColFilters((prev) => ({ ...prev, [key]: value }));
   };
 
-  /** Admin + DL: full Projects & Issues privileges (edit/columns/CheckPoint/create). */
-  const canElevateProjects = Boolean(user && canManageProjectsIssues(normalizePersonnelRole(user)));
+  const personnelRole = user ? normalizePersonnelRole(user) : "DE";
+  /** Admin + DL: full Projects & Issues privileges (edit/columns/create). */
+  const canElevateProjects = canManageProjectsIssues(personnelRole);
+  /** Admin + DL + DE: CheckPoint edit (not full project edit mode). */
+  const canEditCpByRole = canEditProjectCheckpoints(personnelRole);
   const canCreate = Boolean(canElevateProjects || role === "leader");
   /** Column tools (+ ADD / Remove / reorder) only while elevated user is in edit mode on the list. */
   const canManageColumns = canElevateProjects && mode === "list" && editMode;
@@ -602,7 +606,7 @@ export function ProjectsIssuesPage({
     const existing = [...(project.checkpoints ?? [])];
     const handover = project.checkpoint_handover_date ?? "";
     // Seed template into local draft only (no Neon write until Save).
-    if (existing.length === 0 && leaderProjectIds.includes(project.id)) {
+    if (existing.length === 0 && (canEditCpByRole || leaderProjectIds.includes(project.id))) {
       setCheckpointDraft(buildDefaultCheckpointTemplate());
       setCheckpointHandoverDate(handover);
       setCheckpointDirty(true);
@@ -626,7 +630,8 @@ export function ProjectsIssuesPage({
     resetCheckpointAddDialog();
   };
 
-  const canEditCheckpoints = (projectId: string) => leaderProjectIds.includes(projectId);
+  const canEditCheckpoints = (projectId: string) =>
+    canEditCpByRole || leaderProjectIds.includes(projectId);
 
   const markCheckpointDirty = () => setCheckpointDirty(true);
 
@@ -1889,7 +1894,7 @@ export function ProjectsIssuesPage({
                     </div>
                   </div>
                 ) : (
-                  <p className="pi-checkpoint-hint">Only project leaders, Admin, or DL can edit CheckPoints.</p>
+                  <p className="pi-checkpoint-hint">Only project leaders, Admin, DL, or DE can edit CheckPoints.</p>
                 )}
               </div>
 

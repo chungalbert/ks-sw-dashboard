@@ -151,10 +151,23 @@ export function canViewWorkLog(role: PersonnelRole): boolean {
 
 /**
  * Projects & Issues page elevated access (same as Admin for that page):
- * edit mode, columns, CheckPoint, create/delete. Personnel Add Member/ACTIONS stay Admin-only.
+ * edit mode, columns, create/delete. Personnel Add Member/ACTIONS stay Admin-only.
  */
 export function canManageProjectsIssues(role: PersonnelRole): boolean {
   return role === "Admin" || role === "DL";
+}
+
+/** CheckPoint open/edit/save/add/delete — Admin / DL / DE (not full Projects edit mode). */
+export function canEditProjectCheckpoints(role: PersonnelRole): boolean {
+  return role === "Admin" || role === "DL" || role === "DE";
+}
+
+/**
+ * Security outer structure (+ New item / New cycle / Edit cycle / delete item / Issue create).
+ * Admin / DM / DL. DE / DQA / PM / SA edit inner matrix cells only (+ Save All).
+ */
+export function canManageSecurityStructure(role: PersonnelRole): boolean {
+  return role === "Admin" || role === "DM" || role === "DL";
 }
 
 /** Spreadsheet Type column for Work Log. */

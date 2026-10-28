@@ -93,6 +93,7 @@ export function CycleDetailPanel({
   saved,
   busy,
   profileName,
+  canManageStructure,
   onBack,
   onEditCycle,
   onSave,
@@ -106,6 +107,8 @@ export function CycleDetailPanel({
   saved: CycleDetailDoc | null;
   busy: boolean;
   profileName: (id: string | null) => string | null;
+  /** Admin/DM/DL: New item, delete item, edit cycle, item title/detail. */
+  canManageStructure: boolean;
   onBack: () => void;
   onEditCycle: () => void;
   /** Persist full draft (items + release) on Save All. */
@@ -354,34 +357,38 @@ export function CycleDetailPanel({
               {cycle.name}
               {cycle.quarter ? ` · ${cycle.quarter}` : ""}
             </h1>
-            <button
-              type="button"
-              className="sec-detail-gear"
-              onClick={onEditCycle}
-              aria-label="Edit cycle"
-              title="Edit cycle"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="12" cy="12" r="3" />
-                <path d="M12 1v2M12 21v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M1 12h2M21 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4" />
-              </svg>
-            </button>
+            {canManageStructure ? (
+              <button
+                type="button"
+                className="sec-detail-gear"
+                onClick={onEditCycle}
+                aria-label="Edit cycle"
+                title="Edit cycle"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="3" />
+                  <path d="M12 1v2M12 21v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M1 12h2M21 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4" />
+                </svg>
+              </button>
+            ) : null}
           </div>
           <p className="sec-detail-sub">Security update review and project release tracking.</p>
         </div>
         <div className="sec-detail-actions">
           {dirty && <span className="sec-detail-dirty">Unsaved draft</span>}
-          <button
-            type="button"
-            className="sec-btn-ghost sec-toolbar-action"
-            onClick={() => setAddIssueOpen(true)}
-            disabled={busy}
-          >
-            <span className="sec-toolbar-action-icon" aria-hidden="true">
-              +
-            </span>
-            New item
-          </button>
+          {canManageStructure ? (
+            <button
+              type="button"
+              className="sec-btn-ghost sec-toolbar-action"
+              onClick={() => setAddIssueOpen(true)}
+              disabled={busy}
+            >
+              <span className="sec-toolbar-action-icon" aria-hidden="true">
+                +
+              </span>
+              New item
+            </button>
+          ) : null}
           <button
             type="button"
             className="sec-btn-ghost sec-toolbar-action"
@@ -400,7 +407,7 @@ export function CycleDetailPanel({
 
       {error && <p className="sec-error">{error}</p>}
 
-      {addIssueOpen ? (
+      {canManageStructure && addIssueOpen ? (
         <AddIssueToCycleModal
           issues={issues}
           excludeIssueIds={linkedIssueIds}
@@ -499,7 +506,9 @@ export function CycleDetailPanel({
             {sortedItems.length === 0 ? (
               <tr>
                 <td colSpan={colCount} className="sec-roster-empty">
-                  No security items yet — click + New item
+                  {canManageStructure
+                    ? "No security items yet — click + New item"
+                    : "No security items yet — ask Admin / DM / DL to add items."}
                 </td>
               </tr>
             ) : (
@@ -513,20 +522,24 @@ export function CycleDetailPanel({
                           value={item.title}
                           onChange={(e) => updateItem(item.id, { title: e.target.value })}
                           aria-label={`Item ${idx + 1} title`}
+                          readOnly={!canManageStructure}
+                          disabled={!canManageStructure}
                         />
-                        <button
-                          type="button"
-                          className="sec-detail-trash"
-                          onClick={() => removeItem(item.id)}
-                          aria-label={`Delete ${item.title || "item"}`}
-                        >
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <polyline points="3 6 5 6 21 6" />
-                            <path d="M19 6l-1 14H6L5 6" />
-                            <path d="M10 11v6M14 11v6" />
-                            <path d="M9 6V4h6v2" />
-                          </svg>
-                        </button>
+                        {canManageStructure ? (
+                          <button
+                            type="button"
+                            className="sec-detail-trash"
+                            onClick={() => removeItem(item.id)}
+                            aria-label={`Delete ${item.title || "item"}`}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <polyline points="3 6 5 6 21 6" />
+                              <path d="M19 6l-1 14H6L5 6" />
+                              <path d="M10 11v6M14 11v6" />
+                              <path d="M9 6V4h6v2" />
+                            </svg>
+                          </button>
+                        ) : null}
                       </div>
                       <input
                         className="sec-detail-item-detail"
@@ -534,6 +547,8 @@ export function CycleDetailPanel({
                         onChange={(e) => updateItem(item.id, { detail: e.target.value })}
                         placeholder="Version / path / note"
                         aria-label={`Item ${idx + 1} detail`}
+                        readOnly={!canManageStructure}
+                        disabled={!canManageStructure}
                       />
                       <span className="sec-detail-item-num">#{idx + 1}</span>
                     </div>
