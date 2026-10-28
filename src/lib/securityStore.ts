@@ -56,18 +56,23 @@ function isSecurityTableMissing(err: unknown): boolean {
     err && typeof err === "object" && "code" in err
       ? String((err as { code?: unknown }).code ?? "")
       : "";
-  return (
-    code === "42P01" ||
-    code === "PGRST205" ||
-    code === "PGRST204" ||
-    msg.includes("could not find the table") ||
-    msg.includes("schema cache") ||
-    (msg.includes("does not exist") && msg.includes("security_")) ||
+  // Only treat *missing relation / schema-cache* as "use local". Bare
+  // "security_roster" in a column/RLS/permission error must NOT silent-fallback
+  // (that caused Neon vs awb-security-v1 split-brain).
+  const namesTable =
     msg.includes("security_cycles") ||
     msg.includes("security_roster") ||
     msg.includes("security_issues") ||
-    msg.includes("security_cycle_details")
-  );
+    msg.includes("security_cycle_details");
+  const missingRelation =
+    code === "42P01" ||
+    code === "PGRST205" ||
+    msg.includes("could not find the table") ||
+    (msg.includes("does not exist") && namesTable) ||
+    (msg.includes("schema cache") && namesTable) ||
+    (namesTable && (msg.includes("not find") || msg.includes("could not find")));
+  // PGRST204 = missing *column* in an existing table — still cloud; do not fall local.
+  return missingRelation && code !== "PGRST204";
 }
 
 function loadLocalDetails(): Record<string, CycleDetailDoc> {

@@ -1,4 +1,4 @@
-import { FormEvent, Fragment, useEffect, useMemo, useState } from "react";
+import { FormEvent, Fragment, useEffect, useMemo, useRef, useState } from "react";
 import {
   EMPTY_ISSUE_COLUMN_FILTERS,
   IssueColumnFilter,
@@ -116,11 +116,16 @@ function AnalysisInline({
   onSave: (next: AnalyzedNote[]) => void;
 }) {
   const [draft, setDraft] = useState("");
+  /** Keep latest notes for rapid Add/Edit so stale props cannot drop a prior note. */
+  const notesRef = useRef(notes);
+  notesRef.current = notes;
   const add = () => {
     const value = draft.trim();
     if (!value || !userId) return;
     setDraft("");
-    onSave(addAnalyzedNote(notes, value, userId));
+    const next = addAnalyzedNote(notesRef.current, value, userId);
+    notesRef.current = next;
+    onSave(next);
   };
 
   return (
@@ -136,9 +141,11 @@ function AnalysisInline({
                 type="button"
                 className="pi-linkish"
                 onClick={() => {
-                  const next = window.prompt("Edit analysis", note.text);
-                  if (next == null || !userId) return;
-                  onSave(updateAnalyzedNote(notes, note.id, next, userId));
+                  const nextText = window.prompt("Edit analysis", note.text);
+                  if (nextText == null || !userId) return;
+                  const next = updateAnalyzedNote(notesRef.current, note.id, nextText, userId);
+                  notesRef.current = next;
+                  onSave(next);
                 }}
               >
                 Edit
@@ -729,12 +736,27 @@ export function ProjectsIssuesPage({
   const onSaveCheckpoints = async () => {
     if (!checkpointProjectId || !canEditCheckpoints(checkpointProjectId)) return;
     setError("");
+    const savedId = checkpointProjectId;
+    const savedItems = checkpointDraft;
+    const savedHandover = checkpointHandoverDate;
     try {
       await runSave(async () => {
-        await api.updateProject(checkpointProjectId, {
-          checkpoints: checkpointDraft,
-          checkpoint_handover_date: checkpointHandoverDate,
+        await api.updateProject(savedId, {
+          checkpoints: savedItems,
+          checkpoint_handover_date: savedHandover,
         });
+        // Apply locally before reload — retainPrior can keep a stale list if Neon
+        // briefly returns [] and would otherwise hide the just-saved CheckPoints.
+        patchProjectsLocal((prev) =>
+          prev.map((p) =>
+            p.id === savedId
+              ? mergeProjectDraft(p, {
+                  checkpoints: savedItems,
+                  checkpoint_handover_date: savedHandover,
+                })
+              : p,
+          ),
+        );
         await reload();
       });
       setCheckpointDirty(false);
