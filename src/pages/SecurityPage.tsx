@@ -2,6 +2,7 @@ import { FormEvent, MouseEvent as ReactMouseEvent, useCallback, useEffect, useMe
 import { CycleDetailPanel } from "../components/CycleDetailPanel";
 import { LoadingIndicator } from "../components/LoadingIndicator";
 import { SavingIndicator } from "../components/SavingIndicator";
+import { useAuth } from "../context/AuthContext";
 import { useStore } from "../context/StoreContext";
 import type { CycleDetailDoc } from "../lib/cycleDetailTypes";
 import {
@@ -24,7 +25,12 @@ import {
 } from "../lib/securityTypes";
 import { useSaveStatus } from "../lib/useSaveStatus";
 import { PROJECT_COLUMNS_META_NAME } from "../lib/cloudApi";
-import type { Profile, Project } from "../lib/types";
+import {
+  canManageSecurityStructure,
+  normalizePersonnelRole,
+  type Profile,
+  type Project,
+} from "../lib/types";
 
 type Tab = "overview" | "issues";
 
@@ -48,8 +54,11 @@ function defaultQuarterLabel(): string {
 }
 
 export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) {
+  const { user } = useAuth();
   const { projects, profiles, initialLoading } = useStore();
   const { saveStatus, runSave } = useSaveStatus();
+  const personnelRole = user ? normalizePersonnelRole(user) : "DE";
+  const canManageStructure = canManageSecurityStructure(personnelRole);
 
   /** All Personnel members for Owner / Reviewer selects (sorted). */
   const personnelMembers = useMemo(() => {
@@ -391,6 +400,7 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
               saved={detailDoc}
               busy={saveStatus.kind === "saving"}
               profileName={profileName}
+              canManageStructure={canManageStructure}
               onBack={closeCycleDetail}
               onEditCycle={() => setCycleModal({ mode: "edit", cycle: detailCycle })}
               onLinkIssue={async (issueId, projectIds) => {
@@ -445,6 +455,7 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
             projects={visibleProjects}
             personnel={personnelMembers}
             profileName={profileName}
+            canManageStructure={canManageStructure}
             onSelectCycle={setActiveCycleId}
             onOpenDetail={() => {
               if (activeCycle) void openCycleDetail(activeCycle.id);
@@ -463,6 +474,7 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
             totalIssueCount={snap?.issues.length ?? 0}
             issueCounts={issueCounts}
             filter={issueCycleFilter}
+            canManageStructure={canManageStructure}
             onFilter={setIssueCycleFilter}
             onAdd={() => setIssueModal({ mode: "create" })}
             onEdit={(issue) => setIssueModal({ mode: "edit", issue })}
@@ -536,7 +548,7 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
             }
           }}
           onDelete={
-            issueModal.mode === "edit" && issueModal.issue
+            canManageStructure && issueModal.mode === "edit" && issueModal.issue
               ? async () => {
                   setError("");
                   const id = issueModal.issue!.id;
@@ -565,6 +577,7 @@ function OverviewPanel({
   projects,
   personnel,
   profileName,
+  canManageStructure,
   onSelectCycle,
   onOpenDetail,
   onNewCycle,
@@ -580,6 +593,7 @@ function OverviewPanel({
   projects: { id: string; name: string; lenovo_name?: string }[];
   personnel: Profile[];
   profileName: (id: string | null) => string | null;
+  canManageStructure: boolean;
   onSelectCycle: (id: string) => void;
   onOpenDetail: () => void;
   onNewCycle: () => void;
@@ -659,19 +673,21 @@ function OverviewPanel({
           <Metric label="SA BVT" value={metrics.saBvt} total={metrics.total} tone="link" />
           <Metric label="Completed" value={metrics.completed} total={metrics.total} tone="ok" />
         </div>
-        <div className="sec-cycle-actions">
-          <button
-            type="button"
-            className="sec-edit-cycle"
-            onClick={onEditCycle}
-            disabled={!activeCycle}
-          >
-            Edit
-          </button>
-          <button type="button" className="sec-new-cycle" onClick={onNewCycle}>
-            <span aria-hidden="true">+</span> New cycle
-          </button>
-        </div>
+        {canManageStructure ? (
+          <div className="sec-cycle-actions">
+            <button
+              type="button"
+              className="sec-edit-cycle"
+              onClick={onEditCycle}
+              disabled={!activeCycle}
+            >
+              Edit
+            </button>
+            <button type="button" className="sec-new-cycle" onClick={onNewCycle}>
+              <span aria-hidden="true">+</span> New cycle
+            </button>
+          </div>
+        ) : null}
       </section>
 
       <div className="sec-cycle-pills" role="tablist" aria-label="Cycles">
@@ -709,30 +725,34 @@ function OverviewPanel({
                 <th>Lenovo Project Name</th>
                 <th>
                   Wave{" "}
-                  <button
-                    type="button"
-                    className="sec-th-affordance"
-                    onClick={() => setBatchModal("wave")}
-                    disabled={roster.length === 0}
-                    aria-label="Batch assign Wave"
-                    title="Batch assign Wave"
-                  >
-                    +
-                  </button>
+                  {canManageStructure ? (
+                    <button
+                      type="button"
+                      className="sec-th-affordance"
+                      onClick={() => setBatchModal("wave")}
+                      disabled={roster.length === 0}
+                      aria-label="Batch assign Wave"
+                      title="Batch assign Wave"
+                    >
+                      +
+                    </button>
+                  ) : null}
                 </th>
                 <th>Owner</th>
                 <th>
                   Reviewer{" "}
-                  <button
-                    type="button"
-                    className="sec-th-affordance"
-                    onClick={() => setBatchModal("reviewer")}
-                    disabled={roster.length === 0}
-                    aria-label="Batch assign Reviewer"
-                    title="Batch assign Reviewer"
-                  >
-                    +
-                  </button>
+                  {canManageStructure ? (
+                    <button
+                      type="button"
+                      className="sec-th-affordance"
+                      onClick={() => setBatchModal("reviewer")}
+                      disabled={roster.length === 0}
+                      aria-label="Batch assign Reviewer"
+                      title="Batch assign Reviewer"
+                    >
+                      +
+                    </button>
+                  ) : null}
                 </th>
                 <th>SA Owner</th>
                 <th>PM Owner</th>
@@ -1155,6 +1175,7 @@ function IssueSummaryPanel({
   totalIssueCount,
   issueCounts,
   filter,
+  canManageStructure,
   onFilter,
   onAdd,
   onEdit,
@@ -1164,6 +1185,7 @@ function IssueSummaryPanel({
   totalIssueCount: number;
   issueCounts: Map<string, number>;
   filter: string;
+  canManageStructure: boolean;
   onFilter: (id: string) => void;
   onAdd: () => void;
   onEdit: (issue: SecurityIssue) => void;
@@ -1175,9 +1197,11 @@ function IssueSummaryPanel({
           <h1>Issue Summary</h1>
           <p>Create each security update item once, then reuse it in any cycle.</p>
         </div>
-        <button type="button" className="sec-add-issue" onClick={onAdd} aria-label="Add issue">
-          +
-        </button>
+        {canManageStructure ? (
+          <button type="button" className="sec-add-issue" onClick={onAdd} aria-label="Add issue">
+            +
+          </button>
+        ) : null}
       </div>
 
       <div className="sec-issue-filters" role="tablist" aria-label="Filter by cycle">
