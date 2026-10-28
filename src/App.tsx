@@ -26,7 +26,7 @@ import {
   type ViewId,
 } from "./lib/types";
 import { ALL_PROJECTS_ID } from "./lib/projects";
-import { roleLabel } from "./lib/roles";
+import { personnelRoleLabel } from "./lib/roles";
 import { LANDING_FOOTER_LABEL } from "./lib/util";
 
 const GanttPage = lazy(() => import("./pages/GanttPage").then((m) => ({ default: m.GanttPage })));
@@ -178,7 +178,7 @@ function readSidebarCollapsed(): boolean {
 
 function Shell() {
   const { user, signOut } = useAuth();
-  const { projects, projectId, setProjectId, role, initialLoading, loadError } = useStore();
+  const { projects, projectId, setProjectId, initialLoading, loadError } = useStore();
   const [view, setView] = useState<ViewId>("home");
   const [showPassword, setShowPassword] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(readSidebarCollapsed);
@@ -319,7 +319,9 @@ function Shell() {
                 </div>
                 <div className="sidebar-user-meta">
                   <span className="sidebar-user-name">{user?.display_name}</span>
-                  <span className="sidebar-user-role">{roleLabel(Boolean(user?.is_admin), role)}</span>
+                  <span className="sidebar-user-role" title="Personnel Role">
+                    {personnelRoleLabel(personnelRole)}
+                  </span>
                 </div>
                 <button
                   type="button"
