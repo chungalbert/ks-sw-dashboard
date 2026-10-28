@@ -71,7 +71,31 @@ export function WorkLogPage({ onGoDashboard }: { onGoDashboard?: () => void }) {
     try {
       await runSave(async () => {
         const updated = await workLogStore.update(id, patch);
-        setRows((prev) => prev.map((r) => (r.id === id ? updated : r)));
+        // Merge server row with any in-flight local edits (e.g. 內容 typing) so a
+        // concurrent Type/Project/Owner save does not clobber the content draft.
+        setRows((prev) =>
+          prev.map((r) => {
+            if (r.id !== id) return r;
+            const merged = { ...updated };
+            for (const key of Object.keys(patch) as Array<keyof typeof patch>) {
+              if (patch[key] !== undefined) {
+                (merged as Record<string, unknown>)[key as string] = updated[key as keyof typeof updated];
+              }
+            }
+            // Keep local fields that were not part of this patch (still being edited).
+            if (patch.content === undefined) merged.content = r.content;
+            if (patch.entry_date === undefined) merged.entry_date = r.entry_date;
+            if (patch.entry_type === undefined) merged.entry_type = r.entry_type;
+            if (patch.project_id === undefined) {
+              merged.project_id = r.project_id;
+              merged.project_name = r.project_name;
+              merged.product_name = r.product_name;
+            }
+            if (patch.owner_id === undefined) merged.owner_id = r.owner_id;
+            if (patch.done === undefined) merged.done = r.done;
+            return merged;
+          }),
+        );
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Save failed");

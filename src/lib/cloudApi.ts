@@ -927,16 +927,26 @@ export const cloudApi = {
     if (isStandardProjectColumnId(columnId)) return;
 
     // Strip custom cell values for this column from every visible project (best-effort).
-    const projects = await cloudApi.listProjects();
-    for (const project of projects) {
-      if (!project.custom || !(columnId in project.custom)) continue;
-      const nextCustom = { ...project.custom };
+    // Read raw `custom` — normalizeProjectRow strips __kssw_checkpoints; rewriting that
+    // cleaned object would wipe the CheckPoint dual-write fallback.
+    const { data: rawRows, error: rawError } = await sb()
+      .from("projects")
+      .select("id, custom, name");
+    if (rawError) throwPostgrestError(rawError);
+    for (const row of rawRows ?? []) {
+      if (isProjectColumnsMetaProject(row as { name: string })) continue;
+      const custom =
+        row.custom && typeof row.custom === "object" && !Array.isArray(row.custom)
+          ? { ...(row.custom as Record<string, string>) }
+          : {};
+      if (!(columnId in custom)) continue;
+      const nextCustom = { ...custom };
       delete nextCustom[columnId];
       const { error: updateError } = await sb()
         .from("projects")
         .update({ custom: nextCustom })
-        .eq("id", project.id);
-      if (updateError) throw updateError;
+        .eq("id", row.id);
+      if (updateError) throwPostgrestError(updateError);
     }
   },
 
@@ -1002,11 +1012,19 @@ export const cloudApi = {
       .map((c) => c.id)
       .filter((id) => !isStandardProjectColumnId(id));
     if (stripIds.length > 0) {
-      const projects = await cloudApi.listProjects();
-      for (const project of projects) {
-        if (!project.custom) continue;
+      // Raw custom (not normalizeProjectRow) so __kssw_checkpoints dual-write survives.
+      const { data: rawRows, error: rawError } = await sb()
+        .from("projects")
+        .select("id, custom, name");
+      if (rawError) throwPostgrestError(rawError);
+      for (const row of rawRows ?? []) {
+        if (isProjectColumnsMetaProject(row as { name: string })) continue;
+        const custom =
+          row.custom && typeof row.custom === "object" && !Array.isArray(row.custom)
+            ? { ...(row.custom as Record<string, string>) }
+            : {};
         let changed = false;
-        const nextCustom = { ...project.custom };
+        const nextCustom = { ...custom };
         for (const id of stripIds) {
           if (id in nextCustom) {
             delete nextCustom[id];
@@ -1017,8 +1035,8 @@ export const cloudApi = {
         const { error: updateError } = await sb()
           .from("projects")
           .update({ custom: nextCustom })
-          .eq("id", project.id);
-        if (updateError) throw updateError;
+          .eq("id", row.id);
+        if (updateError) throwPostgrestError(updateError);
       }
     }
 
