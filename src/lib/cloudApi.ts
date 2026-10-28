@@ -53,8 +53,13 @@ import type {
   WorkLogEntryPatch,
   WorkLogType,
 } from "./types";
-import { normalizePersonnelRole, normalizeTaskStatus, WORK_LOG_TYPES } from "./types";
+import { canManageProjectsIssues, normalizePersonnelRole, normalizeTaskStatus, WORK_LOG_TYPES } from "./types";
 import { DEFAULT_PASSWORD, hasNeonConfig, usernameFromEmail } from "./util";
+
+/** Admin + DL elevated for Projects & Issues (not Personnel Add Member). */
+function isProjectsElevated(me: Pick<Profile, "is_admin" | "personnel_role">): boolean {
+  return canManageProjectsIssues(normalizePersonnelRole(me));
+}
 
 function asJsonStringArray(value: unknown): string[] {
   if (Array.isArray(value)) return value.map(String);
@@ -850,7 +855,7 @@ export const cloudApi = {
   async addProjectColumn(label: string, id?: string): Promise<ProjectColumn> {
     const me = await cloudApi.currentUser();
     if (!me) throw new Error("尚未登入");
-    if (!me.is_admin) throw new Error("只有管理員可以新增欄位");
+    if (!isProjectsElevated(me)) throw new Error("只有 Admin 或 DL 可以新增欄位");
     const trimmed = label.trim();
     if (!trimmed) throw new Error("欄位名稱不能空白");
     if (isReservedProjectColumnLabel(trimmed)) {
@@ -903,7 +908,7 @@ export const cloudApi = {
   async removeProjectColumn(columnId: string) {
     const me = await cloudApi.currentUser();
     if (!me) throw new Error("尚未登入");
-    if (!me.is_admin) throw new Error("只有管理員可以刪除欄位");
+    if (!isProjectsElevated(me)) throw new Error("只有 Admin 或 DL 可以刪除欄位");
 
     const metaCols = await cloudApi.listProjectColumnsFromMeta();
     const target = metaCols.find((col) => col.id === columnId);
@@ -957,7 +962,7 @@ export const cloudApi = {
   async replaceProjectColumns(columns: ProjectColumn[]): Promise<ProjectColumn[]> {
     const me = await cloudApi.currentUser();
     if (!me) throw new Error("尚未登入");
-    if (!me.is_admin) throw new Error("只有管理員可以編輯欄位");
+    if (!isProjectsElevated(me)) throw new Error("只有 Admin 或 DL 可以編輯欄位");
 
     const labels = new Set<string>();
     const normalized: ProjectColumn[] = [];
@@ -1046,7 +1051,7 @@ export const cloudApi = {
   async listLeaderProjectIds(): Promise<string[]> {
     const me = await cloudApi.currentUser();
     if (!me) return [];
-    if (me.is_admin) {
+    if (isProjectsElevated(me)) {
       const projects = await cloudApi.listProjects();
       return projects.map((p) => p.id);
     }
@@ -1087,7 +1092,7 @@ export const cloudApi = {
   async myRole(projectId: string): Promise<Role | null> {
     const me = await cloudApi.currentUser();
     if (!me) return null;
-    if (me.is_admin) return "leader";
+    if (isProjectsElevated(me)) return "leader";
     const members = await cloudApi.listMembers(projectId);
     return members.find((m) => m.user_id === me.id)?.role ?? null;
   },
