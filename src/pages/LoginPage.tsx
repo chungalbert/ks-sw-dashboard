@@ -1,6 +1,6 @@
 import { FormEvent, useState } from "react";
 import { useAuth } from "../context/AuthContext";
-import { DEFAULT_PASSWORD, LANDING_FOOTER_LABEL } from "../lib/util";
+import { APP_VERSION, DEFAULT_PASSWORD, LANDING_FOOTER_LABEL } from "../lib/util";
 
 export function LoginPage() {
   const { signIn } = useAuth();
@@ -48,7 +48,9 @@ export function LoginPage() {
 
       <main className="page">
         <section className="hero">
-          <h1>KSSW <span className="ver">V1</span></h1>
+          <h1>
+            KSSW <span className="ver">{APP_VERSION}</span>
+          </h1>
           <p className="lead">Projects, issues, schedule, 教學, and personnel — one KSSW workspace.</p>
         </section>
 
