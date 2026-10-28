@@ -49,8 +49,11 @@ import type {
   ProjectMember,
   Role,
   Task,
+  WorkLogEntry,
+  WorkLogEntryPatch,
+  WorkLogType,
 } from "./types";
-import { normalizePersonnelRole, normalizeTaskStatus } from "./types";
+import { normalizePersonnelRole, normalizeTaskStatus, WORK_LOG_TYPES } from "./types";
 import { DEFAULT_PASSWORD, hasNeonConfig, usernameFromEmail } from "./util";
 
 function asJsonStringArray(value: unknown): string[] {
@@ -1813,4 +1816,87 @@ export const cloudApi = {
     if (error) throw error;
     return mapSecurityCycleDetail(data as Record<string, unknown>);
   },
+
+  async listWorkLogEntries(): Promise<WorkLogEntry[]> {
+    const { data, error } = await sb()
+      .from("work_log_entries")
+      .select("*")
+      .order("sort_order", { ascending: true })
+      .order("created_at", { ascending: true });
+    if (error) throw error;
+    return (data ?? []).map((row) => mapWorkLogEntry(row as Record<string, unknown>));
+  },
+
+  async createWorkLogEntry(partial: WorkLogEntryPatch = {}): Promise<WorkLogEntry> {
+    const me = await cloudApi.currentUser();
+    if (!me) throw new Error("尚未登入");
+    const existing = await cloudApi.listWorkLogEntries();
+    const maxSort = existing.reduce((m, r) => Math.max(m, r.sort_order), -1);
+    const payload = {
+      entry_date: partial.entry_date ?? "",
+      entry_type: normalizeWorkLogType(partial.entry_type),
+      project_id: partial.project_id ?? null,
+      project_name: (partial.project_name ?? "").trim(),
+      product_name: (partial.product_name ?? "").trim(),
+      content: partial.content ?? "",
+      owner_id: partial.owner_id ?? null,
+      done: Boolean(partial.done),
+      sort_order: partial.sort_order ?? maxSort + 1,
+      created_by: me.id,
+      updated_at: new Date().toISOString(),
+    };
+    const { data, error } = await sb().from("work_log_entries").insert(payload).select().single();
+    if (error) throw error;
+    return mapWorkLogEntry(data as Record<string, unknown>);
+  },
+
+  async updateWorkLogEntry(id: string, patch: WorkLogEntryPatch): Promise<WorkLogEntry> {
+    const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (patch.entry_date !== undefined) updates.entry_date = patch.entry_date;
+    if (patch.entry_type !== undefined) updates.entry_type = normalizeWorkLogType(patch.entry_type);
+    if (patch.project_id !== undefined) updates.project_id = patch.project_id;
+    if (patch.project_name !== undefined) updates.project_name = patch.project_name.trim();
+    if (patch.product_name !== undefined) updates.product_name = patch.product_name.trim();
+    if (patch.content !== undefined) updates.content = patch.content;
+    if (patch.owner_id !== undefined) updates.owner_id = patch.owner_id;
+    if (patch.done !== undefined) updates.done = Boolean(patch.done);
+    if (patch.sort_order !== undefined) updates.sort_order = patch.sort_order;
+    const { data, error } = await sb()
+      .from("work_log_entries")
+      .update(updates)
+      .eq("id", id)
+      .select()
+      .single();
+    if (error) throw error;
+    return mapWorkLogEntry(data as Record<string, unknown>);
+  },
+
+  async deleteWorkLogEntry(id: string): Promise<void> {
+    const { error } = await sb().from("work_log_entries").delete().eq("id", id);
+    if (error) throw error;
+  },
 };
+
+function normalizeWorkLogType(raw: unknown): WorkLogType | "" {
+  const value = typeof raw === "string" ? raw.trim() : "";
+  if ((WORK_LOG_TYPES as readonly string[]).includes(value)) return value as WorkLogType;
+  return "";
+}
+
+function mapWorkLogEntry(row: Record<string, unknown>): WorkLogEntry {
+  return {
+    id: String(row.id ?? ""),
+    entry_date: typeof row.entry_date === "string" ? row.entry_date : "",
+    entry_type: normalizeWorkLogType(row.entry_type),
+    project_id: row.project_id == null || row.project_id === "" ? null : String(row.project_id),
+    project_name: typeof row.project_name === "string" ? row.project_name : "",
+    product_name: typeof row.product_name === "string" ? row.product_name : "",
+    content: typeof row.content === "string" ? row.content : "",
+    owner_id: row.owner_id == null || row.owner_id === "" ? null : String(row.owner_id),
+    done: Boolean(row.done),
+    sort_order: Number.isFinite(Number(row.sort_order)) ? Number(row.sort_order) : 0,
+    created_by: row.created_by == null ? null : String(row.created_by),
+    created_at: typeof row.created_at === "string" ? row.created_at : undefined,
+    updated_at: typeof row.updated_at === "string" ? row.updated_at : undefined,
+  };
+}

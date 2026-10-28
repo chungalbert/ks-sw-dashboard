@@ -13,6 +13,7 @@ import { OtpVaultPage } from "./pages/OtpVaultPage";
 import { WheaToolPage } from "./pages/WheaToolPage";
 import { SecurityPage } from "./pages/SecurityPage";
 import { InvPcrPage } from "./pages/InvPcrPage";
+import { WorkLogPage } from "./pages/WorkLogPage";
 import { AppToolbar } from "./components/AppToolbar";
 import { LoadingIndicator } from "./components/LoadingIndicator";
 import { PageLoadingGate, viewNeedsStoreBoot } from "./components/PageLoadingGate";
@@ -43,6 +44,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: "gantt", label: "Project schedule", icon: "calendar" },
       { id: "security", label: "Security", icon: "shield" },
       { id: "inv-pcr", label: "INV&PCR", icon: "clipboard" },
+      { id: "work-log", label: "Work Log", icon: "list" },
     ],
   },
   {
@@ -112,6 +114,13 @@ function NavIcon({ name }: { name: string }) {
           <rect x="8" y="2" width="8" height="4" rx="1" />
           <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
           <path d="M9 12h6M9 16h6" />
+        </svg>
+      );
+    case "list":
+      return (
+        <svg {...common}>
+          <path d="M8 6h13M8 12h13M8 18h13" />
+          <path d="M3 6h.01M3 12h.01M3 18h.01" />
         </svg>
       );
     case "book":
@@ -205,8 +214,10 @@ function Shell() {
   const isOtp = currentView === "otp";
   const isWhea = currentView === "whea";
   const isSecurity = currentView === "security";
+  const isWorkLog = currentView === "work-log";
   const isToolChild = isOtp || isWhea;
-  const hideChrome = isProjectIssue || isPersonnel || isNotes || isChat || isToolChild || isSecurity;
+  const hideChrome =
+    isProjectIssue || isPersonnel || isNotes || isChat || isToolChild || isSecurity || isWorkLog;
 
   const toggleGroup = (key: string) => {
     setOpenGroups((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -226,7 +237,7 @@ function Shell() {
 
   return (
     <div
-      className={`app shell${isProjectIssue ? " shell-pi" : ""}${isPersonnel ? " shell-personnel" : ""}${isNotes ? " shell-note" : ""}${isChat ? " shell-chat" : ""}${isOtp ? " shell-otp" : ""}${isWhea ? " shell-tool-detail" : ""}${isSecurity ? " shell-security" : ""}${sidebarCollapsed ? " shell-sidebar-collapsed" : ""}`}
+      className={`app shell${isProjectIssue ? " shell-pi" : ""}${isPersonnel ? " shell-personnel" : ""}${isNotes ? " shell-note" : ""}${isChat ? " shell-chat" : ""}${isOtp ? " shell-otp" : ""}${isWhea ? " shell-tool-detail" : ""}${isSecurity ? " shell-security" : ""}${isWorkLog ? " shell-work-log" : ""}${sidebarCollapsed ? " shell-sidebar-collapsed" : ""}`}
     >
       <aside
         className={`sidebar${sidebarCollapsed ? " is-collapsed" : ""}`}
@@ -369,7 +380,7 @@ function Shell() {
         )}
 
         <main
-          className={`page page-shell${isProjectIssue ? " page-pi" : ""}${isPersonnel ? " page-personnel" : ""}${isNotes ? " page-note" : ""}${isChat ? " page-chat" : ""}${isOtp ? " page-otp" : ""}${isWhea ? " page-tool-detail" : ""}${isSecurity ? " page-security" : ""}`}
+          className={`page page-shell${isProjectIssue ? " page-pi" : ""}${isPersonnel ? " page-personnel" : ""}${isNotes ? " page-note" : ""}${isChat ? " page-chat" : ""}${isOtp ? " page-otp" : ""}${isWhea ? " page-tool-detail" : ""}${isSecurity ? " page-security" : ""}${isWorkLog ? " page-work-log" : ""}`}
         >
           {viewNeedsStoreBoot(currentView) ? (
             <PageLoadingGate>
@@ -397,6 +408,9 @@ function Shell() {
               )}
               {currentView === "security" && (
                 <SecurityPage onGoDashboard={() => setView("home")} />
+              )}
+              {currentView === "work-log" && (
+                <WorkLogPage onGoDashboard={() => setView("home")} />
               )}
               {currentView === "gantt" && (
                 <Suspense

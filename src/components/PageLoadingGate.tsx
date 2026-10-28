@@ -11,6 +11,7 @@ export const STORE_BOOT_VIEWS = new Set<ViewId>([
   "people",
   "tasks",
   "security",
+  "work-log",
 ]);
 
 /**

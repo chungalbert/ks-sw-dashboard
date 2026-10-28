@@ -31,6 +31,8 @@ import {
   type ProjectMember,
   type Role,
   type Task,
+  type WorkLogEntry,
+  type WorkLogEntryPatch,
 } from "./types";
 import { hasNeonConfig, hasSupabaseConfig } from "./util";
 
@@ -778,5 +780,23 @@ export const api = {
     await withSharedCloud(() => cloudApi.removeOtpEntry(id), () => {
       localApi.removeOtpEntry(id);
     }, "write");
+  },
+
+  /** Work Log sheet — Admin/DM/DL/DE (Neon `work_log_entries`). */
+  async listWorkLogEntries(): Promise<WorkLogEntry[]> {
+    if (hasSupabaseConfig()) return cloudApi.listWorkLogEntries();
+    return localApi.listWorkLogEntries();
+  },
+  async createWorkLogEntry(partial: WorkLogEntryPatch = {}): Promise<WorkLogEntry> {
+    if (hasSupabaseConfig()) return cloudApi.createWorkLogEntry(partial);
+    return localApi.createWorkLogEntry(partial);
+  },
+  async updateWorkLogEntry(id: string, patch: WorkLogEntryPatch): Promise<WorkLogEntry> {
+    if (hasSupabaseConfig()) return cloudApi.updateWorkLogEntry(id, patch);
+    return localApi.updateWorkLogEntry(id, patch);
+  },
+  async deleteWorkLogEntry(id: string): Promise<void> {
+    if (hasSupabaseConfig()) return cloudApi.deleteWorkLogEntry(id);
+    localApi.deleteWorkLogEntry(id);
   },
 };
