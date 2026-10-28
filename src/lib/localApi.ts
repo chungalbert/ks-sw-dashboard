@@ -16,13 +16,17 @@ import type {
   ProjectMember,
   Role,
   Task,
+  WorkLogEntry,
+  WorkLogEntryPatch,
+  WorkLogType,
 } from "./types";
-import { NOTE_COLORS, normalizePersonnelRole, normalizeTaskStatus } from "./types";
+import { NOTE_COLORS, normalizePersonnelRole, normalizeTaskStatus, WORK_LOG_TYPES } from "./types";
 import { DEFAULT_PASSWORD, sha256, usernameFromEmail } from "./util";
 
 const KEY = "awb-store-v1";
 const LEGACY_NOTES_KEY = "awb-notes-v1";
 const LEGACY_OTP_KEY = "awb-otp-vault-v1";
+const WORK_LOG_KEY = "kssw-work-log-v1";
 /** sha256(`admin:${DEFAULT_PASSWORD}`) — keep in sync with util.DEFAULT_PASSWORD. */
 const ADMIN_HASH = "c8c09b731e0fb8d16540a7edcc47927c739c09baad3adb85bdba1ab3b4fa7120";
 
@@ -910,7 +914,90 @@ export const localApi = {
     store.otpEntries = [];
     save(store);
   },
+
+  listWorkLogEntries(): WorkLogEntry[] {
+    return loadWorkLog().sort(
+      (a, b) =>
+        a.sort_order - b.sort_order ||
+        (a.created_at ?? "").localeCompare(b.created_at ?? "") ||
+        a.id.localeCompare(b.id),
+    );
+  },
+
+  createWorkLogEntry(partial: WorkLogEntryPatch = {}): WorkLogEntry {
+    const rows = loadWorkLog();
+    const maxSort = rows.reduce((m, r) => Math.max(m, r.sort_order), -1);
+    const now = new Date().toISOString();
+    const row: WorkLogEntry = {
+      id: crypto.randomUUID(),
+      entry_date: partial.entry_date ?? "",
+      entry_type: normalizeLocalWorkLogType(partial.entry_type),
+      project_id: partial.project_id ?? null,
+      project_name: (partial.project_name ?? "").trim(),
+      product_name: (partial.product_name ?? "").trim(),
+      content: partial.content ?? "",
+      owner_id: partial.owner_id ?? null,
+      done: Boolean(partial.done),
+      sort_order: partial.sort_order ?? maxSort + 1,
+      created_at: now,
+      updated_at: now,
+    };
+    rows.push(row);
+    saveWorkLog(rows);
+    return row;
+  },
+
+  updateWorkLogEntry(id: string, patch: WorkLogEntryPatch): WorkLogEntry {
+    const rows = loadWorkLog();
+    const idx = rows.findIndex((r) => r.id === id);
+    if (idx < 0) throw new Error("找不到 Work Log 列");
+    const prev = rows[idx];
+    const next: WorkLogEntry = {
+      ...prev,
+      entry_date: patch.entry_date !== undefined ? patch.entry_date : prev.entry_date,
+      entry_type:
+        patch.entry_type !== undefined ? normalizeLocalWorkLogType(patch.entry_type) : prev.entry_type,
+      project_id: patch.project_id !== undefined ? patch.project_id : prev.project_id,
+      project_name:
+        patch.project_name !== undefined ? patch.project_name.trim() : prev.project_name,
+      product_name:
+        patch.product_name !== undefined ? patch.product_name.trim() : prev.product_name,
+      content: patch.content !== undefined ? patch.content : prev.content,
+      owner_id: patch.owner_id !== undefined ? patch.owner_id : prev.owner_id,
+      done: patch.done !== undefined ? Boolean(patch.done) : prev.done,
+      sort_order: patch.sort_order !== undefined ? patch.sort_order : prev.sort_order,
+      updated_at: new Date().toISOString(),
+    };
+    rows[idx] = next;
+    saveWorkLog(rows);
+    return next;
+  },
+
+  deleteWorkLogEntry(id: string) {
+    saveWorkLog(loadWorkLog().filter((r) => r.id !== id));
+  },
 };
+
+function loadWorkLog(): WorkLogEntry[] {
+  try {
+    const raw = localStorage.getItem(WORK_LOG_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as WorkLogEntry[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveWorkLog(rows: WorkLogEntry[]) {
+  localStorage.setItem(WORK_LOG_KEY, JSON.stringify(rows));
+}
+
+function normalizeLocalWorkLogType(raw: unknown): WorkLogType | "" {
+  const value = typeof raw === "string" ? raw.trim() : "";
+  if ((WORK_LOG_TYPES as readonly string[]).includes(value)) return value as WorkLogType;
+  return "";
+}
 
 export function ensureSampleIfEmpty() {
   const store = load();

@@ -14,6 +14,7 @@ export type ViewId =
   | "gantt"
   | "security"
   | "inv-pcr"
+  | "work-log"
   | "guides"
   | "notes"
   | "chat"
@@ -142,6 +143,47 @@ export function canAccessView(role: PersonnelRole, view: ViewId): boolean {
   if (!isWorkspaceLimitedRole(role)) return true;
   return (WORKSPACE_LIMITED_VIEWS as readonly string[]).includes(view);
 }
+
+/** Work Log + Personnel: Admin / DM / DL / DE (not DQA / PM / SA). */
+export function canViewWorkLog(role: PersonnelRole): boolean {
+  return !isWorkspaceLimitedRole(role);
+}
+
+/** Spreadsheet Type column for Work Log. */
+export const WORK_LOG_TYPES = ["PCR", "INV", "Bootleg", "SPB", "Formal", "IPU", "Sum"] as const;
+export type WorkLogType = (typeof WORK_LOG_TYPES)[number];
+
+export interface WorkLogEntry {
+  id: string;
+  /** ISO date `YYYY-MM-DD` (replaces sheet 月份). */
+  entry_date: string;
+  entry_type: WorkLogType | "";
+  project_id: string | null;
+  /** Compal project name snapshot. */
+  project_name: string;
+  /** Lenovo project name snapshot (read-only in UI). */
+  product_name: string;
+  content: string;
+  owner_id: string | null;
+  /** 完成 CheckPoint */
+  done: boolean;
+  sort_order: number;
+  created_by?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export type WorkLogEntryPatch = Partial<{
+  entry_date: string;
+  entry_type: WorkLogType | "";
+  project_id: string | null;
+  project_name: string;
+  product_name: string;
+  content: string;
+  owner_id: string | null;
+  done: boolean;
+  sort_order: number;
+}>;
 
 export interface ProjectColumn {
   id: string;
