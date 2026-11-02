@@ -6297,27 +6297,76 @@ button.sec-th-affordance:disabled {
 }
 .sec-it-table th.is-dqa { background: #bdd7ee; }
 .sec-it-table th.is-rd { background: #f4b183; }
+/* Status matches DQA header blue (not a special green) — compact like short text cols. */
 .sec-it-table th.is-status {
-  background: #c5e0b4;
-  min-width: 72px;
-  max-width: 96px;
+  min-width: 5.75rem;
+  max-width: 6.5rem;
+  width: 5.75rem;
 }
 .sec-it-table td.is-rd { background: rgba(244, 177, 131, 0.08); }
 .sec-it-table td.is-status {
-  min-width: 72px;
-  max-width: 96px;
-  vertical-align: top;
+  min-width: 5.75rem;
+  max-width: 6.5rem;
+  width: 5.75rem;
+  vertical-align: middle;
+  padding: 4px;
 }
+/* Dedicated select — do NOT inherit .sec-it-cell (textarea min-width / stretch / loud blue focus). */
 .sec-it-status-select {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  height: 2rem;
   min-height: 2rem;
-  padding: 0.25rem 0.35rem;
-  resize: none;
+  margin: 0;
+  padding: 0.15rem 0.35rem;
+  border: 1px solid #4b5563;
+  border-radius: 4px;
+  background: #1a1b1e;
+  color: #e8eaed;
+  color-scheme: dark;
+  font: inherit;
+  font-size: 0.8rem;
+  line-height: 1.25;
+  text-align: left;
   cursor: pointer;
+  appearance: auto;
+  resize: none;
+  outline: none;
+}
+.sec-it-status-select:focus {
+  border-color: #6b7280;
+  background: #111827;
+  box-shadow: none;
+}
+.sec-it-status-select.is-saving {
+  border-color: #60a5fa;
 }
 .sec-it-status-select.is-pass,
 .sec-it-readonly.is-pass {
-  color: #166534;
+  color: #86efac;
   font-weight: 650;
+}
+.sec-it-status-select.is-fail,
+.sec-it-readonly.is-fail {
+  color: #fca5a5;
+  font-weight: 600;
+}
+.sec-it-status-select.is-fixed,
+.sec-it-readonly.is-fixed {
+  color: #93c5fd;
+  font-weight: 600;
+}
+.sec-it-status-select.is-cancelled,
+.sec-it-readonly.is-cancelled {
+  color: #9ca3af;
+  font-weight: 550;
+}
+.sec-it-status-select option {
+  color: #e8eaed;
+  background: #1a1b1e;
 }
 .sec-it-cell {
   display: block;

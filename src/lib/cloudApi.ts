@@ -24,9 +24,10 @@ import {
   normalizeCycleDetailItem,
   normalizeProjectReleaseCell,
 } from "./cycleDetailTypes";
-import type {
-  SecurityIssueTrackingInput,
-  SecurityIssueTrackingRow,
+import {
+  normalizeIssueTrackingStatus,
+  type SecurityIssueTrackingInput,
+  type SecurityIssueTrackingRow,
 } from "./securityIssueTracking";
 import type {
   NewCycleInput,
@@ -91,13 +92,19 @@ function normalizeSecurityStatus(raw: string | undefined): SecurityRosterStatus 
 
 function mapSecurityIssueTracking(row: Record<string, unknown>): SecurityIssueTrackingRow {
   const str = (k: string) => (row[k] != null ? String(row[k]) : "");
+  // PostgREST may omit `status` when the Data API schema cache is stale after
+  // neon/security-issue-tracking-status.sql — prefer explicit key, then case variants.
+  const statusRaw =
+    row.status ??
+    row.Status ??
+    (Object.entries(row).find(([k]) => k.toLowerCase() === "status")?.[1] ?? "");
   return {
     id: String(row.id),
     cycle_id: String(row.cycle_id),
     roster_id: String(row.roster_id),
     project_id: str("project_id"),
     project_name: str("project_name"),
-    status: str("status"),
+    status: normalizeIssueTrackingStatus(statusRaw),
     task: str("task"),
     issue_date: str("issue_date"),
     no: str("no"),
@@ -1931,12 +1938,13 @@ export const cloudApi = {
     const me = await cloudApi.currentUser();
     const existing = await cloudApi.listSecurityIssueTracking(input.roster_id);
     const maxSort = existing.reduce((m, r) => Math.max(m, r.sort_order), -1);
+    const status = normalizeIssueTrackingStatus(input.status ?? "");
     const payload: Record<string, unknown> = {
       cycle_id: input.cycle_id,
       roster_id: input.roster_id,
       project_id: input.project_id ?? "",
       project_name: input.project_name ?? "",
-      status: input.status ?? "",
+      status,
       task: input.task ?? "",
       issue_date: input.issue_date ?? "",
       no: input.no ?? "",
@@ -1964,7 +1972,10 @@ export const cloudApi = {
       .select()
       .single();
     if (error) throw error;
-    return mapSecurityIssueTracking(data as Record<string, unknown>);
+    const mapped = mapSecurityIssueTracking(data as Record<string, unknown>);
+    // If Data API schema cache omits `status` on the return payload, keep what we wrote.
+    if (!mapped.status && status) return { ...mapped, status };
+    return mapped;
   },
 
   async updateSecurityIssueTracking(
@@ -1996,7 +2007,9 @@ export const cloudApi = {
       "project_name",
     ] as const;
     for (const k of keys) {
-      if (patch[k] !== undefined) updates[k] = patch[k];
+      if (patch[k] !== undefined) {
+        updates[k] = k === "status" ? normalizeIssueTrackingStatus(patch[k]) : patch[k];
+      }
     }
     const { data, error } = await sb()
       .from("security_issue_tracking")
@@ -2005,7 +2018,12 @@ export const cloudApi = {
       .select()
       .single();
     if (error) throw error;
-    return mapSecurityIssueTracking(data as Record<string, unknown>);
+    const mapped = mapSecurityIssueTracking(data as Record<string, unknown>);
+    if (patch.status !== undefined) {
+      const wanted = normalizeIssueTrackingStatus(patch.status);
+      if (!mapped.status && wanted) return { ...mapped, status: wanted };
+    }
+    return mapped;
   },
 
   async deleteSecurityIssueTracking(id: string): Promise<void> {

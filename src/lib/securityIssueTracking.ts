@@ -47,8 +47,38 @@ export const ISSUE_TRACKING_LABELS: Record<IssueTrackingField, string> = {
   conclusion: "Conclusion",
 };
 
-/** Common Status values (Cover/report PASS → PASS; else blank / Fail / free text). */
-export const ISSUE_TRACKING_STATUS_OPTIONS = ["", "PASS", "Fail"] as const;
+/**
+ * Canonical Issue Tracking Status values shown in the 總表 / per-project select.
+ * Cover/report PASS → PASS; Albert marks Fail / Fixed / Cancelled.
+ */
+export const ISSUE_TRACKING_STATUS_OPTIONS = [
+  "",
+  "Fail",
+  "Fixed",
+  "PASS",
+  "Cancelled",
+] as const;
+
+export type IssueTrackingStatusOption = (typeof ISSUE_TRACKING_STATUS_OPTIONS)[number];
+
+/** Normalize free-text / casing variants to a canonical option (or trimmed original). */
+export function normalizeIssueTrackingStatus(raw: unknown): string {
+  if (raw == null) return "";
+  const trimmed = String(raw).trim();
+  if (!trimmed) return "";
+  const key = trimmed.toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ");
+  if (key === "pass" || key === "passed" || key === "ok") return "PASS";
+  if (key === "fail" || key === "failed" || key === "failure") return "Fail";
+  if (key === "fixed" || key === "fix" || key === "resolved") return "Fixed";
+  if (key === "cancelled" || key === "canceled" || key === "cancel") return "Cancelled";
+  return trimmed;
+}
+
+/** Select options = canonical list + current value when it is a custom leftover. */
+export function issueTrackingStatusOptionsFor(value: string): string[] {
+  const normalized = normalizeIssueTrackingStatus(value);
+  return Array.from(new Set([...ISSUE_TRACKING_STATUS_OPTIONS, normalized]));
+}
 
 /** RD block — visually distinct (orange) in UI / template. */
 export const ISSUE_TRACKING_RD_FIELDS: IssueTrackingField[] = [
@@ -246,7 +276,7 @@ export async function buildIssueTrackingTemplate(
     meta?.cycle_name ? `Cycle: ${meta.cycle_name}` : "",
     "",
     "1. Keep header row labels (Status, Task, Date, No, Defect ID, …). Aliases accepted on import.",
-    "2. Status is optional (PASS / Fail / blank). Cover/report PASS sets Status=PASS but never drops prior rows.",
+    "2. Status is optional (Fail / Fixed / PASS / Cancelled / blank). Cover/report PASS sets Status=PASS but never drops prior rows.",
     "3. Required for each data row: Defect ID and Title.",
     "4. Existing Defect ID on this project is NOT overwritten — that row is reported as an error and skipped.",
     "5. Duplicate Defect ID inside the file → later row(s) error.",
@@ -315,6 +345,7 @@ export function parseIssueTrackingWorkbook(
     colMap.forEach((header, col) => {
       fields[header] = cellText(row.getCell(col).value);
     });
+    fields.status = normalizeIssueTrackingStatus(fields.status);
     if (isBlank(fields)) return;
 
     const defect = fields.defect_id.trim();
