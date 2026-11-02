@@ -13,13 +13,14 @@ import {
   RELEASE_TRACKING_ROWS,
   detailDocSignature,
   emptyApplyCell,
+  isCycleDetailConflictError,
   newDetailItemId,
   normalizeApplyCell,
   normalizeEcrHref,
 } from "../lib/cycleDetailTypes";
 import type { SecurityCycle, SecurityIssue, SecurityRosterEntry } from "../lib/securityTypes";
 import { issueAllowedInCycle } from "../lib/securityTypes";
-import { seedDetailFromIssues } from "../lib/securityStore";
+import { securityStore, seedDetailFromIssues } from "../lib/securityStore";
 import { projectSortOrderValue } from "../lib/projects";
 import type { Project } from "../lib/types";
 import {
@@ -99,6 +100,7 @@ export function CycleDetailPanel({
   onBack,
   onEditCycle,
   onSave,
+  onAdoptSaved,
   onLinkIssue,
 }: {
   cycle: SecurityCycle;
@@ -113,8 +115,10 @@ export function CycleDetailPanel({
   canManageStructure: boolean;
   onBack: () => void;
   onEditCycle: () => void;
-  /** Persist full draft (items + release) on Save All. */
-  onSave: (doc: CycleDetailDoc) => Promise<void>;
+  /** Persist full draft (items + release) on Save All. Pass force to overwrite after conflict warning. */
+  onSave: (doc: CycleDetailDoc, opts?: { force?: boolean }) => Promise<void>;
+  /** Adopt a freshly loaded server doc into parent state (conflict → load theirs). */
+  onAdoptSaved?: (doc: CycleDetailDoc) => void;
   /** Persist Issue Summary ↔ cycle link (cycle_ids + projects). */
   onLinkIssue: (
     issueId: string,
@@ -196,9 +200,20 @@ export function CycleDetailPanel({
   const ecrFocusPidRef = useRef<string | null>(null);
   const initialDocRef = useRef(initialDoc);
   initialDocRef.current = initialDoc;
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
+  const baselineRef = useRef(baseline);
+  baselineRef.current = baseline;
 
   useEffect(() => {
     const doc = initialDocRef.current;
+    const current = draftRef.current;
+    // Keep Unsaved draft when parent refreshes `saved` (Issue Summary sync / peer reload)
+    // so hydrate cannot silently wipe in-progress cell edits for the same cycle.
+    const preserveDirty =
+      current.cycle_id === doc.cycle_id &&
+      detailDocSignature(current) !== baselineRef.current;
+    if (preserveDirty) return;
     setDraft(cloneDoc(doc));
     setBaseline(detailDocSignature(doc));
     setEcrEditing(new Set());
@@ -317,8 +332,17 @@ export function CycleDetailPanel({
     // Persist immediately so the new SECURITY UPDATE ITEM survives navigation
     // and parent rehydrate (Save All still used for cell edits).
     if (!already) {
-      await onSave(nextDoc);
-      setBaseline(detailDocSignature(nextDoc));
+      try {
+        await onSave(nextDoc);
+        setBaseline(detailDocSignature(nextDoc));
+      } catch (err) {
+        if (isCycleDetailConflictError(err)) {
+          const ok = await resolveConflictAndSave(nextDoc);
+          if (!ok) throw err;
+          return;
+        }
+        throw err;
+      }
     }
   };
 
@@ -353,6 +377,33 @@ export function CycleDetailPanel({
     });
   };
 
+  const resolveConflictAndSave = async (doc: CycleDetailDoc): Promise<boolean> => {
+    const overwrite = window.confirm(
+      "Someone else saved this cycle since you opened it.\n\n" +
+        "OK = overwrite their Save All with your draft\n" +
+        "Cancel = discard your draft and load their version",
+    );
+    if (overwrite) {
+      await onSave(doc, { force: true });
+      setBaseline(detailDocSignature(doc));
+      setEcrEditing(new Set());
+      setError("");
+      return true;
+    }
+    const latest = await securityStore.loadCycleDetail(doc.cycle_id);
+    if (latest) {
+      const cloned = cloneDoc(latest);
+      setDraft(cloned);
+      setBaseline(detailDocSignature(cloned));
+      setEcrEditing(new Set());
+      onAdoptSaved?.(cloned);
+      setError("Loaded the newer saved version. Your draft was discarded.");
+    } else {
+      setError("Could not load the newer version. Try Back and reopen the cycle.");
+    }
+    return false;
+  };
+
   const handleSave = async () => {
     setError("");
     try {
@@ -360,6 +411,14 @@ export function CycleDetailPanel({
       setBaseline(detailDocSignature(draft));
       setEcrEditing(new Set());
     } catch (err) {
+      if (isCycleDetailConflictError(err)) {
+        try {
+          await resolveConflictAndSave(draft);
+        } catch (retryErr) {
+          setError(retryErr instanceof Error ? retryErr.message : String(retryErr));
+        }
+        return;
+      }
       setError(err instanceof Error ? err.message : String(err));
     }
   };

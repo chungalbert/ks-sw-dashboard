@@ -18,7 +18,7 @@ import {
   type ProjectFieldPatch,
 } from "./projectsUiStore";
 import type { CycleDetailDoc, CycleDetailItem, ItemApplyCell } from "./cycleDetailTypes";
-import { normalizeApplyCell } from "./cycleDetailTypes";
+import { CycleDetailConflictError, normalizeApplyCell } from "./cycleDetailTypes";
 import type {
   SecurityIssueTrackingInput,
   SecurityIssueTrackingRow,
@@ -2016,7 +2016,22 @@ export const cloudApi = {
     return mapSecurityCycleDetail(data as Record<string, unknown>);
   },
 
-  async upsertSecurityCycleDetail(doc: CycleDetailDoc): Promise<CycleDetailDoc> {
+  /**
+   * Upsert full cycle detail document.
+   * When `expectedUpdatedAt` is set, refuse if the stored row has a different stamp
+   * (multi-account Save All conflict). Pass `expectedUpdatedAt: null` / omit to force.
+   */
+  async upsertSecurityCycleDetail(
+    doc: CycleDetailDoc,
+    opts?: { expectedUpdatedAt?: string | null },
+  ): Promise<CycleDetailDoc> {
+    const expected = opts?.expectedUpdatedAt;
+    if (expected != null && expected !== "") {
+      const current = await cloudApi.getSecurityCycleDetail(doc.cycle_id);
+      if (current && current.updated_at !== expected) {
+        throw new CycleDetailConflictError(current);
+      }
+    }
     const now = new Date().toISOString();
     const payload = {
       cycle_id: doc.cycle_id,
