@@ -497,7 +497,8 @@ export function securityDisplayDate(isoOrSlash: string): string {
  * 1. Internal release = Internal Release Done
  * 2. SA BVT = SA BVT Test Done
  * 3. Issue Clarification = DQA Test Complete equals `Test Complete`
- * 4. Completed = DQA Test Complete Done AND Sign off Done
+ * 4. Test Pass = DQA Test Complete equals `Done` (independent of Sign off)
+ * 5. Completed = DQA Test Complete Done AND Sign off Done
  * Totals need not sum to roster length.
  */
 export function cycleMetrics(
@@ -518,6 +519,9 @@ export function cycleMetrics(
     saBvt: roster.filter((r) => isReleaseDone(cellFor(r.project_id)?.sa_bvt_test)).length,
     issueClarification: roster.filter((r) =>
       isReleaseTestComplete(cellFor(r.project_id)?.external_release_web),
+    ).length,
+    testPass: roster.filter((r) =>
+      isReleaseDone(cellFor(r.project_id)?.external_release_web),
     ).length,
     completed: roster.filter((r) => {
       const cell = cellFor(r.project_id);

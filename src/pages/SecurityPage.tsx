@@ -782,6 +782,7 @@ function OverviewPanel({
             total={metrics.total}
             tone="warn"
           />
+          <Metric label="Test Pass" value={metrics.testPass} total={metrics.total} tone="link" />
           <Metric label="Completed" value={metrics.completed} total={metrics.total} tone="ok" />
         </div>
         {canManageStructure ? (
