@@ -27,6 +27,7 @@ import {
 import { useSaveStatus } from "../lib/useSaveStatus";
 import { PROJECT_COLUMNS_META_NAME } from "../lib/cloudApi";
 import {
+  canEditSecurityIssueTracking,
   canManageSecurityStructure,
   normalizePersonnelRole,
   type Profile,
@@ -60,8 +61,8 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
   const { saveStatus, runSave } = useSaveStatus();
   const personnelRole = user ? normalizePersonnelRole(user) : "DE";
   const canManageStructure = canManageSecurityStructure(personnelRole);
-  /** Security page viewers (incl. DE/DQA/PM/SA) may edit Issue Tracking content. */
-  const canEditIssueTracking = Boolean(user);
+  /** Admin/DM/DL/DE/DQA/PM/SA — Issue Tracking cells / add / Excel (not delete). */
+  const canEditIssueTracking = Boolean(user) && canEditSecurityIssueTracking(personnelRole);
 
   /** All Personnel members for Owner / Reviewer selects (sorted). */
   const personnelMembers = useMemo(() => {
