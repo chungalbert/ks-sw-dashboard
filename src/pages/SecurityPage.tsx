@@ -1,6 +1,6 @@
 import { FormEvent, MouseEvent as ReactMouseEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { CycleDetailPanel } from "../components/CycleDetailPanel";
-import { IssueTrackingModal } from "../components/IssueTrackingModal";
+import { IssueTrackingPanel } from "../components/IssueTrackingPanel";
 import { LoadingIndicator } from "../components/LoadingIndicator";
 import { SavingIndicator } from "../components/SavingIndicator";
 import { useAuth } from "../context/AuthContext";
@@ -85,7 +85,10 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
   const [issueModal, setIssueModal] = useState<null | { mode: "create" | "edit"; issue?: SecurityIssue }>(
     null,
   );
-  /** Per-project Issue Tracking spreadsheet (roster row after Status). */
+  /**
+   * Per-project Issue Tracking child page (roster row after Status).
+   * Null = not on that sub-page; set = navigate to dedicated page (not a modal).
+   */
   const [issueTrackingRoster, setIssueTrackingRoster] = useState<SecurityRosterEntry | null>(null);
   /** When set, show cycle detail matrix (AIOSW security-update?cycle=…). */
   const [detailCycleId, setDetailCycleId] = useState<string | null>(null);
@@ -234,6 +237,7 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
     if (!snap) return [] as SecurityIssue[];
     let list = snap.issues;
     if (issueCycleFilter !== "all") {
+      // Only items that checked this cycle (cycle_ids). Empty = All-only / unrestricted.
       list = list.filter((i) => i.cycle_ids.includes(issueCycleFilter));
     }
     const q = query.trim().toLowerCase();
@@ -254,7 +258,7 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
     for (const c of cycles) map.set(c.id, 0);
     for (const issue of snap?.issues ?? []) {
       for (const cid of issue.cycle_ids) {
-        map.set(cid, (map.get(cid) ?? 0) + 1);
+        if (map.has(cid)) map.set(cid, (map.get(cid) ?? 0) + 1);
       }
     }
     return map;
@@ -319,7 +323,27 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
           <span className="sec-bc-sep" aria-hidden="true">
             /
           </span>
-          {detailCycle ? (
+          {issueTrackingRoster ? (
+            <>
+              <button
+                type="button"
+                className="sec-bc-link"
+                onClick={() => {
+                  setIssueTrackingRoster(null);
+                  setTab("overview");
+                }}
+              >
+                BIOS Security Updates
+              </button>
+              <span className="sec-bc-sep" aria-hidden="true">
+                /
+              </span>
+              <span className="sec-bc-current">
+                Issue Tracking
+                {issueTrackingRoster.project_name ? ` · ${issueTrackingRoster.project_name}` : ""}
+              </span>
+            </>
+          ) : detailCycle ? (
             <>
               <button
                 type="button"
@@ -353,7 +377,7 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
 
         <div className="sec-toolbar-actions">
           <SavingIndicator status={saveStatus} />
-          {!detailCycle && (
+          {!detailCycle && !issueTrackingRoster && (
           <button
             type="button"
             className="sec-toggle-btn"
@@ -391,6 +415,16 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
             <LoadingIndicator />
             <span>Loading project roster...</span>
           </div>
+        ) : issueTrackingRoster ? (
+          <IssueTrackingPanel
+            roster={issueTrackingRoster}
+            cycleName={cycles.find((c) => c.id === issueTrackingRoster.cycle_id)?.name ?? ""}
+            canManageStructure={canManageStructure}
+            canEditContent={canEditIssueTracking}
+            busy={saveStatus.kind === "saving"}
+            runSave={runSave}
+            onBack={() => setIssueTrackingRoster(null)}
+          />
         ) : detailCycle ? (
           detailLoading ? (
             <div className="sec-loading" role="status" aria-busy="true">
@@ -472,7 +506,10 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
             }}
             onPatchRoster={patchRoster}
             onPatchRosterMany={patchRosterMany}
-            onOpenIssueTracking={setIssueTrackingRoster}
+            onOpenIssueTracking={(row) => {
+              closeCycleDetail();
+              setIssueTrackingRoster(row);
+            }}
           />
         ) : (
           <IssueSummaryPanel
@@ -526,25 +563,51 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
         <IssueModal
           mode={issueModal.mode}
           issue={issueModal.issue}
+          cycles={cycles}
           onClose={() => setIssueModal(null)}
           onSave={async (input) => {
             setError("");
             try {
-              await runSave(async () => {
-                if (issueModal.mode === "edit" && issueModal.issue) {
+              const isEdit = issueModal.mode === "edit" && issueModal.issue;
+              const savedIssue = await runSave(async () => {
+                if (isEdit && issueModal.issue) {
                   const prev = issueModal.issue;
-                  await securityStore.updateIssue(prev.id, {
+                  return securityStore.updateIssue(prev.id, {
                     ...input,
-                    cycle_ids: prev.cycle_ids,
+                    cycle_ids: input.cycle_ids ?? [],
                     project_ids: prev.project_ids,
                     project_names: prev.project_names,
                   });
-                } else {
-                  await securityStore.createIssue(input);
                 }
+                return securityStore.createIssue({
+                  ...input,
+                  cycle_ids: input.cycle_ids ?? [],
+                });
               });
+              // Optimistic slice update — avoid full refresh stale overwrite / missing card
+              // until a hard reload (also unhides brand-new items when a cycle filter is on).
+              setSnap((prev) => {
+                if (!prev) return prev;
+                if (isEdit) {
+                  return {
+                    ...prev,
+                    issues: prev.issues.map((i) => (i.id === savedIssue.id ? savedIssue : i)),
+                  };
+                }
+                return {
+                  ...prev,
+                  issues: [savedIssue, ...prev.issues.filter((i) => i.id !== savedIssue.id)],
+                };
+              });
+              if (!isEdit) {
+                // Prefer first checked cycle filter so the new restricted item is visible;
+                // otherwise All (unrestricted / no cycles checked).
+                const firstCycle = savedIssue.cycle_ids[0];
+                setIssueCycleFilter(firstCycle && cycles.some((c) => c.id === firstCycle) ? firstCycle : "all");
+                setQuery("");
+                setTab("issues");
+              }
               setIssueModal(null);
-              await refresh();
               if (detailCycleId) {
                 const doc = await securityStore.loadCycleDetail(detailCycleId);
                 setDetailDoc(doc);
@@ -560,8 +623,10 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
                   setError("");
                   const id = issueModal.issue!.id;
                   await runSave(() => securityStore.deleteIssue(id));
+                  setSnap((prev) =>
+                    prev ? { ...prev, issues: prev.issues.filter((i) => i.id !== id) } : prev,
+                  );
                   setIssueModal(null);
-                  await refresh();
                   if (detailCycleId) {
                     const doc = await securityStore.loadCycleDetail(detailCycleId);
                     setDetailDoc(doc);
@@ -569,18 +634,6 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
                 }
               : undefined
           }
-        />
-      )}
-
-      {issueTrackingRoster && (
-        <IssueTrackingModal
-          roster={issueTrackingRoster}
-          cycleName={cycles.find((c) => c.id === issueTrackingRoster.cycle_id)?.name ?? ""}
-          canManageStructure={canManageStructure}
-          canEditContent={canEditIssueTracking}
-          busy={saveStatus.kind === "saving"}
-          runSave={runSave}
-          onClose={() => setIssueTrackingRoster(null)}
         />
       )}
     </div>
@@ -1601,18 +1654,21 @@ function CycleFormModal({
 function IssueModal({
   mode,
   issue,
+  cycles,
   onClose,
   onSave,
   onDelete,
 }: {
   mode: "create" | "edit";
   issue?: SecurityIssue;
+  cycles: SecurityCycle[];
   onClose: () => void;
   onSave: (input: {
     title: string;
     oem_request_id?: string;
     detail?: string;
     reference_path?: string;
+    cycle_ids: string[];
   }) => Promise<void>;
   onDelete?: () => Promise<void>;
 }) {
@@ -1621,8 +1677,23 @@ function IssueModal({
   const [oem, setOem] = useState(issue?.oem_request_id ?? "");
   const [detail, setDetail] = useState(issue?.detail ?? "");
   const [referencePath, setReferencePath] = useState(issue?.reference_path ?? "");
+  const [selectedCycles, setSelectedCycles] = useState<Set<string>>(
+    () => new Set(issue?.cycle_ids ?? []),
+  );
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState("");
+
+  const toggleCycle = (id: string) => {
+    setSelectedCycles((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAllCycles = () => setSelectedCycles(new Set(cycles.map((c) => c.id)));
+  const clearCycles = () => setSelectedCycles(new Set());
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -1633,11 +1704,14 @@ function IssueModal({
     setBusy(true);
     setFormError("");
     try {
+      // Preserve cycle checkbox order as cycles list order for stable pills.
+      const cycle_ids = cycles.map((c) => c.id).filter((id) => selectedCycles.has(id));
       await onSave({
         title,
         oem_request_id: oem,
         detail,
         reference_path: referencePath,
+        cycle_ids,
       });
     } catch (err) {
       setFormError(err instanceof Error ? err.message : String(err));
@@ -1674,8 +1748,8 @@ function IssueModal({
             <h2>{isEdit ? "Edit Security Update Item" : "Add Security Update Item"}</h2>
             <p>
               {isEdit
-                ? "Changes are synchronized to every linked cycle."
-                : "Create once, then reuse in any cycle via + New item."}
+                ? "Changes sync to checked cycles. Uncheck a cycle to hide it there and remove its matrix row."
+                : "Check cycles to limit where this item appears (Issue Summary filter & + New item). Leave none checked to allow any cycle."}
             </p>
           </div>
           <button type="button" className="sec-modal-close" onClick={onClose} aria-label="Close">
@@ -1703,6 +1777,47 @@ function IssueModal({
             placeholder={"https://... or \\\\server\\share\\..."}
           />
         </label>
+
+        <div className="sec-projects-picker sec-issue-cycle-picker">
+          <div className="sec-projects-picker-head">
+            <span>
+              Visible in cycles{" "}
+              <span className="sec-muted">
+                Selected {selectedCycles.size} of {cycles.length}
+                {selectedCycles.size === 0 ? " · any cycle" : ""}
+              </span>
+            </span>
+            <span className="sec-issue-cycle-picker-actions">
+              <button type="button" className="sec-select-all-link" onClick={selectAllCycles}>
+                Select all
+              </button>
+              <button type="button" className="sec-select-all-link" onClick={clearCycles}>
+                Clear
+              </button>
+            </span>
+          </div>
+          <ul className="sec-project-checklist sec-project-checklist-2col" aria-label="Cycles">
+            {cycles.length === 0 ? (
+              <li className="sec-muted">No cycles yet — create a cycle first.</li>
+            ) : (
+              cycles.map((c, i) => (
+                <li key={c.id}>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={selectedCycles.has(c.id)}
+                      onChange={() => toggleCycle(c.id)}
+                    />
+                    <span className="sec-check-name">{c.name || c.quarter || c.id}</span>
+                    <span className={`sec-check-blurb sec-mini-pill ${cycleTone(i)}`}>
+                      {c.quarter || c.cycle_type || "Cycle"}
+                    </span>
+                  </label>
+                </li>
+              ))
+            )}
+          </ul>
+        </div>
 
         {formError ? <p className="sec-error">{formError}</p> : null}
 

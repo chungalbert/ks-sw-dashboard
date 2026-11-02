@@ -18,6 +18,7 @@ import {
   normalizeEcrHref,
 } from "../lib/cycleDetailTypes";
 import type { SecurityCycle, SecurityIssue, SecurityRosterEntry } from "../lib/securityTypes";
+import { issueAllowedInCycle } from "../lib/securityTypes";
 import { seedDetailFromIssues } from "../lib/securityStore";
 import type { Project } from "../lib/types";
 import {
@@ -170,6 +171,18 @@ export function CycleDetailPanel({
     return seedDetailFromIssues(cycle.id, issues, projectIds);
   }, [saved, cycle.id, issues, projectIds]);
 
+  /**
+   * Rehydrate draft only when cycle / saved detail / project columns change.
+   * Do NOT key off `issues`: + New item calls linkIssueToCycle → parent updates
+   * issues → previous effect wiped the just-added matrix row (無法新增 ITEM).
+   */
+  const hydrateKey = useMemo(() => {
+    const savedStamp = saved
+      ? `${saved.updated_at ?? ""}:${detailDocSignature(saved)}`
+      : "none";
+    return `${cycle.id}|${savedStamp}|${projectIds.join(",")}`;
+  }, [saved, cycle.id, projectIds]);
+
   const [baseline, setBaseline] = useState(() => detailDocSignature(initialDoc));
   const [draft, setDraft] = useState(() => cloneDoc(initialDoc));
   const [releaseOpen, setReleaseOpen] = useState(true);
@@ -177,13 +190,16 @@ export function CycleDetailPanel({
   /** Project ids whose ECR Number cell is expanded (number + URL inputs). */
   const [ecrEditing, setEcrEditing] = useState<Set<string>>(() => new Set());
   const ecrFocusPidRef = useRef<string | null>(null);
+  const initialDocRef = useRef(initialDoc);
+  initialDocRef.current = initialDoc;
 
   useEffect(() => {
-    setDraft(cloneDoc(initialDoc));
-    setBaseline(detailDocSignature(initialDoc));
+    const doc = initialDocRef.current;
+    setDraft(cloneDoc(doc));
+    setBaseline(detailDocSignature(doc));
     setEcrEditing(new Set());
     setError("");
-  }, [initialDoc]);
+  }, [hydrateKey]);
 
   /** Click / focus outside an expanded ECR cell → collapse back to link view. */
   useEffect(() => {
@@ -262,8 +278,12 @@ export function CycleDetailPanel({
     affectedProjectIds: string[],
   ) => {
     await onLinkIssue(issue.id, affectedProjectIds);
-    setDraft((prev) => {
-      if (prev.items.some((it) => it.issue_id === issue.id)) return prev;
+    // Build next doc from current draft (not initialDoc) so link-driven issue
+    // list updates cannot race-wipe the new row before we persist it.
+    const prev = draft;
+    const already = prev.items.some((it) => it.issue_id === issue.id);
+    let nextDoc = prev;
+    if (!already) {
       const applies: Record<string, ItemApplyCell> = {};
       for (const pid of projectIds) {
         applies[pid] = {
@@ -286,9 +306,16 @@ export function CycleDetailPanel({
         applies,
         sort_order: prev.items.length,
       };
-      return { ...prev, items: [...prev.items, item] };
-    });
+      nextDoc = { ...prev, items: [...prev.items, item] };
+    }
+    setDraft(nextDoc);
     setAddIssueOpen(false);
+    // Persist immediately so the new SECURITY UPDATE ITEM survives navigation
+    // and parent rehydrate (Save All still used for cell edits).
+    if (!already) {
+      await onSave(nextDoc);
+      setBaseline(detailDocSignature(nextDoc));
+    }
   };
 
   const removeItem = (id: string) => {
@@ -409,6 +436,7 @@ export function CycleDetailPanel({
 
       {canManageStructure && addIssueOpen ? (
         <AddIssueToCycleModal
+          cycleId={cycle.id}
           issues={issues}
           excludeIssueIds={linkedIssueIds}
           projects={projectCols}
@@ -785,6 +813,7 @@ export function CycleDetailPanel({
 }
 
 function AddIssueToCycleModal({
+  cycleId,
   issues,
   excludeIssueIds,
   projects,
@@ -792,6 +821,7 @@ function AddIssueToCycleModal({
   onClose,
   onAdd,
 }: {
+  cycleId: string;
   issues: SecurityIssue[];
   excludeIssueIds: Set<string>;
   projects: ProjectCol[];
@@ -806,10 +836,10 @@ function AddIssueToCycleModal({
   const available = useMemo(
     () =>
       issues
-        .filter((i) => !excludeIssueIds.has(i.id))
+        .filter((i) => !excludeIssueIds.has(i.id) && issueAllowedInCycle(i, cycleId))
         .slice()
         .sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: "base" })),
-    [issues, excludeIssueIds],
+    [issues, excludeIssueIds, cycleId],
   );
 
   const [issueId, setIssueId] = useState("");
@@ -951,7 +981,8 @@ function AddIssueToCycleModal({
 
         {available.length === 0 ? (
           <p className="sec-muted">
-            No unused saved items — create one under Issue Summary, or all are already in this cycle.
+            No unused saved items for this cycle — create one under Issue Summary (check this cycle),
+            or all allowed items are already on the matrix.
           </p>
         ) : null}
         {formError ? <p className="sec-error">{formError}</p> : null}

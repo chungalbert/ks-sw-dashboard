@@ -771,10 +771,23 @@ export const securityStore = {
     const title = input.title.trim();
     if (!title) throw new Error("Title is required");
     const syncLinked = opts?.syncLinkedCycles !== false;
+
+    const applyCycleSideEffects = async (prev: SecurityIssue, next: SecurityIssue) => {
+      if (!syncLinked) return;
+      const removed = prev.cycle_ids.filter((cid) => !next.cycle_ids.includes(cid));
+      if (removed.length > 0) {
+        await securityStore.removeIssueFromCycles(next.id, removed);
+      }
+      await securityStore.syncIssueToLinkedCycles(next);
+    };
+
     if (await probeCloud()) {
       try {
+        const snap = await securityStore.load();
+        const prev = snap.issues.find((i) => i.id === id);
+        if (!prev) throw new Error("Issue not found");
         const updated = await cloudApi.updateSecurityIssue(id, input);
-        if (syncLinked) await securityStore.syncIssueToLinkedCycles(updated);
+        await applyCycleSideEffects(prev, updated);
         return updated;
       } catch (err) {
         if (!isSecurityTableMissing(err)) throw err;
@@ -798,7 +811,7 @@ export const securityStore = {
     };
     snap.issues[idx] = next;
     saveLocal(snap);
-    if (syncLinked) await securityStore.syncIssueToLinkedCycles(next);
+    await applyCycleSideEffects(prev, next);
     return next;
   },
 
@@ -895,11 +908,16 @@ export const securityStore = {
   },
 
   async removeIssueFromLinkedCycles(issue: SecurityIssue): Promise<void> {
-    for (const cycleId of issue.cycle_ids) {
+    await securityStore.removeIssueFromCycles(issue.id, issue.cycle_ids);
+  },
+
+  /** Strip matrix rows for an issue from specific cycles (e.g. unchecked on edit). */
+  async removeIssueFromCycles(issueId: string, cycleIds: string[]): Promise<void> {
+    for (const cycleId of cycleIds) {
       const doc = await securityStore.loadCycleDetail(cycleId);
       if (!doc || doc.items.length === 0) continue;
       const nextItems = doc.items
-        .filter((it) => it.issue_id !== issue.id)
+        .filter((it) => it.issue_id !== issueId)
         .map((it, i) => ({ ...it, sort_order: i }));
       if (nextItems.length !== doc.items.length) {
         await securityStore.saveCycleDetail({ ...doc, items: nextItems });
