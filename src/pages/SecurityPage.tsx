@@ -5,7 +5,7 @@ import { LoadingIndicator } from "../components/LoadingIndicator";
 import { SavingIndicator } from "../components/SavingIndicator";
 import { useAuth } from "../context/AuthContext";
 import { useStore } from "../context/StoreContext";
-import type { CycleDetailDoc } from "../lib/cycleDetailTypes";
+import type { CycleDetailDoc, CycleReleaseTracking } from "../lib/cycleDetailTypes";
 import {
   cycleMetrics,
   securityDisplayDate,
@@ -95,6 +95,10 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
   const [detailCycleId, setDetailCycleId] = useState<string | null>(null);
   const [detailDoc, setDetailDoc] = useState<CycleDetailDoc | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  /** Release tracking by cycle — drives overview chips (milestone Done counts). */
+  const [releaseByCycleId, setReleaseByCycleId] = useState<Record<string, CycleReleaseTracking>>(
+    {},
+  );
 
   const visibleProjects = useMemo(
     () =>
@@ -132,16 +136,19 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
     setError("");
     try {
       const next = await securityStore.load();
-      // Keep roster Status aligned with saved Project Release Tracking (Done rules).
+      // Keep roster Status aligned with saved Project Release Tracking; cache release for chips.
       let roster = next.roster;
+      const releases: Record<string, CycleReleaseTracking> = {};
       for (const c of next.cycles) {
         const detail = await securityStore.loadCycleDetail(c.id);
         if (!detail) continue;
+        releases[c.id] = detail.release;
         const updates = await securityStore.syncRosterStatusesFromRelease(c.id, detail.release);
         if (updates.length === 0) continue;
         const byId = new Map(updates.map((r) => [r.id, r]));
         roster = roster.map((r) => byId.get(r.id) ?? r);
       }
+      setReleaseByCycleId(releases);
       setSnap({ ...next, roster });
       setActiveCycleId((prev) => {
         if (prev && next.cycles.some((c) => c.id === prev)) return prev;
@@ -227,8 +234,13 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
     [activeCycle],
   );
   const metrics = useMemo(
-    () => cycleMetrics(cycleRoster, activeCycleWaveCount),
-    [cycleRoster, activeCycleWaveCount],
+    () =>
+      cycleMetrics(
+        cycleRoster,
+        activeCycleWaveCount,
+        activeCycle ? releaseByCycleId[activeCycle.id] : undefined,
+      ),
+    [cycleRoster, activeCycleWaveCount, activeCycle, releaseByCycleId],
   );
 
   const filteredCycles = useMemo(() => {
@@ -473,7 +485,10 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
                 );
                 return updated;
               }}
-              onAdoptSaved={(doc) => setDetailDoc(doc)}
+              onAdoptSaved={(doc) => {
+                setDetailDoc(doc);
+                setReleaseByCycleId((prev) => ({ ...prev, [doc.cycle_id]: doc.release }));
+              }}
               onSave={async (doc, opts) => {
                 const { saved, rosterUpdates } = await runSave(async () => {
                   const savedDoc = await securityStore.saveCycleDetail(doc, {
@@ -486,6 +501,7 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
                   return { saved: savedDoc, rosterUpdates: updates };
                 });
                 setDetailDoc(saved);
+                setReleaseByCycleId((prev) => ({ ...prev, [saved.cycle_id]: saved.release }));
                 if (rosterUpdates.length > 0) {
                   const byId = new Map(rosterUpdates.map((r) => [r.id, r]));
                   setSnap((prev) =>
@@ -938,7 +954,7 @@ function OverviewPanel({
                     <td>
                       <span
                         className="sec-status-pill sec-status-derived"
-                        title="Derived from Project Release Tracking (Internal / SA BVT / DQA Test Complete / Sign off → Done)"
+                        title="Derived from Project Release Tracking: DQA+Sign Done → Completed; DQA Test Complete → Issue Clarification; else Internal / SA BVT ladder"
                       >
                         <span
                           className={`sec-dot${

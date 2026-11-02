@@ -10,7 +10,6 @@ import type {
 } from "../lib/cycleDetailTypes";
 import {
   APPLY_STATUSES,
-  RELEASE_STATUS_OPTIONS,
   RELEASE_TRACKING_ROWS,
   detailDocSignature,
   emptyApplyCell,
@@ -23,6 +22,7 @@ import {
   normalizeEcrHref,
   normalizeProjectReleaseCell,
   nowStamp,
+  releaseStatusOptionsForKey,
 } from "../lib/cycleDetailTypes";
 import type { SecurityCycle, SecurityIssue, SecurityRosterEntry } from "../lib/securityTypes";
 import { issueAllowedInCycle } from "../lib/securityTypes";
@@ -854,17 +854,18 @@ export function CycleDetailPanel({
                       );
                     }
                     if (row.kind === "status") {
+                      const statusOptions = releaseStatusOptionsForKey(row.key);
                       return (
                         <td key={p.id} className="sec-detail-proj-col">
                           <select
                             className={`sec-release-select${value === "Ongoing" ? " is-ongoing" : ""}${
-                              value === "Done" ? " is-done" : ""
-                            }`}
+                              value === "Test Complete" ? " is-test-complete" : ""
+                            }${value === "Done" ? " is-done" : ""}`}
                             value={value}
                             onChange={(e) => setReleaseCell(p.id, row.key, e.target.value)}
                             aria-label={`${row.label} · ${p.name}`}
                           >
-                            {RELEASE_STATUS_OPTIONS.map((opt) => (
+                            {statusOptions.map((opt) => (
                               <option key={opt || "empty"} value={opt}>
                                 {opt || "—"}
                               </option>

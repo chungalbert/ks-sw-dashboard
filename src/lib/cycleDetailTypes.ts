@@ -111,6 +111,25 @@ export const APPLY_STATUSES: ItemApplyStatus[] = [
 
 export const RELEASE_STATUS_OPTIONS = ["", "Ongoing", "Done", "Blocked", "N/A"] as const;
 
+/**
+ * DQA Test Complete (`external_release_web`) also offers **Test Complete**
+ * (Issue Clarification chip / roster status). Other release status rows keep the base list.
+ */
+export const DQA_TEST_COMPLETE_OPTIONS = [
+  "",
+  "Ongoing",
+  "Test Complete",
+  "Done",
+  "Blocked",
+  "N/A",
+] as const;
+
+export function releaseStatusOptionsForKey(
+  key: ReleaseTrackingKey,
+): readonly string[] {
+  return key === "external_release_web" ? DQA_TEST_COMPLETE_OPTIONS : RELEASE_STATUS_OPTIONS;
+}
+
 export function emptyApplyCell(): ItemApplyCell {
   return { status: "", comment: "" };
 }
@@ -537,25 +556,38 @@ export function isReleaseDone(value: string | undefined | null): boolean {
   return String(value ?? "").trim() === "Done";
 }
 
+/** DQA Test Complete value that drives the Issue Clarification chip / row Status. */
+export function isReleaseTestComplete(value: string | undefined | null): boolean {
+  return String(value ?? "").trim() === "Test Complete";
+}
+
 /**
  * Derive Project roster Status from Project Release Tracking for one project.
- * Milestone flags (UI labels): Internal Release, SA BVT Test, DQA Test Complete, Sign off.
+ * Milestone fields (UI labels): Internal Release, SA BVT Test, DQA Test Complete, Sign off.
+ *
+ * Row Status is exclusive (one label per project). Overview chips use independent
+ * milestone counts via `cycleMetrics` and may overlap.
+ *
  * Priority (highest first):
- * 1. Internal + SA BVT + DQA Test Complete + Sign off → Completed
- * 2. Internal + SA BVT + DQA Test Complete (no Sign off) → Issue Clarification
- * 3. Internal + SA BVT (no DQA / Sign off) → SA BVT
- * 4. Internal only → Internal release
- * 5. Else → Not Started
+ * 1. DQA Test Complete = Done AND Sign off = Done → Completed
+ * 2. DQA Test Complete = Test Complete → Issue Clarification
+ * 3. DQA Test Complete = Done (Sign off not Done) → Issue Clarification
+ *    (row-only intermediate; chips count IC only for `Test Complete`)
+ * 4. Internal Release + SA BVT Test Done → SA BVT
+ * 5. Internal Release Done → Internal release
+ * 6. Else → Not Started
  */
 export function deriveRosterStatusFromRelease(
   cell: ProjectReleaseCell | undefined | null,
 ): "Not Started" | "Internal release" | "SA BVT" | "Issue Clarification" | "Completed" {
   const ir = isReleaseDone(cell?.internal_release);
   const sa = isReleaseDone(cell?.sa_bvt_test);
-  const dqa = isReleaseDone(cell?.external_release_web);
+  const dqaDone = isReleaseDone(cell?.external_release_web);
+  const dqaTestComplete = isReleaseTestComplete(cell?.external_release_web);
   const signOff = isReleaseDone(cell?.external_release_wu);
-  if (ir && sa && dqa && signOff) return "Completed";
-  if (ir && sa && dqa) return "Issue Clarification";
+
+  if (dqaDone && signOff) return "Completed";
+  if (dqaTestComplete || dqaDone) return "Issue Clarification";
   if (ir && sa) return "SA BVT";
   if (ir) return "Internal release";
   return "Not Started";

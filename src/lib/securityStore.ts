@@ -16,6 +16,8 @@ import {
   deriveRosterStatusFromRelease,
   emptyCycleDetail,
   ensureDetailTimestamps,
+  isReleaseDone,
+  isReleaseTestComplete,
   newDetailItemId,
   normalizeCycleDetailItem,
   normalizeProjectReleaseCell,
@@ -490,9 +492,21 @@ export function securityDisplayDate(isoOrSlash: string): string {
   return formatMmDd(isoOrSlash);
 }
 
-export function cycleMetrics(roster: SecurityRosterEntry[], definedWaveCount?: number) {
+/**
+ * Overview status chips — independent release-milestone counts (may overlap).
+ * 1. Internal release = Internal Release Done
+ * 2. SA BVT = SA BVT Test Done
+ * 3. Issue Clarification = DQA Test Complete equals `Test Complete`
+ * 4. Completed = DQA Test Complete Done AND Sign off Done
+ * Totals need not sum to roster length.
+ */
+export function cycleMetrics(
+  roster: SecurityRosterEntry[],
+  definedWaveCount?: number,
+  release?: CycleReleaseTracking | null,
+) {
   const total = roster.length;
-  const count = (status: SecurityRosterStatus) => roster.filter((r) => r.status === status).length;
+  const cellFor = (projectId: string) => release?.by_project[projectId];
   return {
     total,
     /** Prefer cycle-defined wave count; fall back to distinct roster assignments. */
@@ -500,10 +514,17 @@ export function cycleMetrics(roster: SecurityRosterEntry[], definedWaveCount?: n
       typeof definedWaveCount === "number"
         ? definedWaveCount
         : new Set(roster.map((r) => r.wave).filter((w) => w && w !== "Not set")).size,
-    internal: count("Internal release"),
-    saBvt: count("SA BVT"),
-    issueClarification: count("Issue Clarification"),
-    completed: count("Completed"),
+    internal: roster.filter((r) => isReleaseDone(cellFor(r.project_id)?.internal_release)).length,
+    saBvt: roster.filter((r) => isReleaseDone(cellFor(r.project_id)?.sa_bvt_test)).length,
+    issueClarification: roster.filter((r) =>
+      isReleaseTestComplete(cellFor(r.project_id)?.external_release_web),
+    ).length,
+    completed: roster.filter((r) => {
+      const cell = cellFor(r.project_id);
+      return (
+        isReleaseDone(cell?.external_release_web) && isReleaseDone(cell?.external_release_wu)
+      );
+    }).length,
   };
 }
 
