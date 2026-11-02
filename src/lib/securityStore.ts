@@ -1165,6 +1165,7 @@ export const securityStore = {
       roster_id: input.roster_id,
       project_id: input.project_id ?? "",
       project_name: input.project_name ?? "",
+      status: input.status ?? "",
       task: input.task ?? "",
       issue_date: input.issue_date ?? "",
       no: input.no ?? "",

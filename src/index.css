@@ -6297,7 +6297,28 @@ button.sec-th-affordance:disabled {
 }
 .sec-it-table th.is-dqa { background: #bdd7ee; }
 .sec-it-table th.is-rd { background: #f4b183; }
+.sec-it-table th.is-status {
+  background: #c5e0b4;
+  min-width: 72px;
+  max-width: 96px;
+}
 .sec-it-table td.is-rd { background: rgba(244, 177, 131, 0.08); }
+.sec-it-table td.is-status {
+  min-width: 72px;
+  max-width: 96px;
+  vertical-align: top;
+}
+.sec-it-status-select {
+  min-height: 2rem;
+  padding: 0.25rem 0.35rem;
+  resize: none;
+  cursor: pointer;
+}
+.sec-it-status-select.is-pass,
+.sec-it-readonly.is-pass {
+  color: #166534;
+  font-weight: 650;
+}
 .sec-it-cell {
   display: block;
   width: 100%;
