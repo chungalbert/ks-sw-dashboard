@@ -36,14 +36,18 @@ const LONG_FIELDS = new Set<IssueTrackingField>([
 
 type DraftMap = Record<string, Partial<Record<IssueTrackingField, string>>>;
 
-export function IssueTrackingModal({
+/**
+ * Dedicated Security child page for one roster project's Issue Tracking sheet.
+ * (Replaces the old modal popup — same edit / Excel / role behavior.)
+ */
+export function IssueTrackingPanel({
   roster,
   cycleName,
   canManageStructure,
   canEditContent,
   busy,
   runSave,
-  onClose,
+  onBack,
 }: {
   roster: SecurityRosterEntry;
   cycleName: string;
@@ -53,7 +57,7 @@ export function IssueTrackingModal({
   canEditContent: boolean;
   busy: boolean;
   runSave: <T>(fn: () => Promise<T>) => Promise<T>;
-  onClose: () => void;
+  onBack: () => void;
 }) {
   const [rows, setRows] = useState<SecurityIssueTrackingRow[]>([]);
   const [drafts, setDrafts] = useState<DraftMap>({});
@@ -254,168 +258,174 @@ export function IssueTrackingModal({
   };
 
   return (
-    <div className="sec-it-backdrop" role="presentation" onClick={onClose}>
-      <div
-        className="sec-it-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="sec-it-title"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <header className="sec-it-head">
+    <section className="sec-it-page" aria-label="Issue Tracking">
+      <div className="sec-it-page-toolbar">
+        <div className="sec-it-page-heading">
+          <button type="button" className="sec-detail-back" onClick={onBack}>
+            ← Back
+          </button>
           <div>
-            <h2 id="sec-it-title">Issue Tracking</h2>
+            <h1 id="sec-it-title" className="sec-it-page-title">
+              Issue Tracking
+            </h1>
             <p className="sec-it-sub">
               {roster.project_name}
               {cycleName ? ` · ${cycleName}` : ""}
               {canEditContent ? " · editable" : " · view only"}
             </p>
           </div>
-          <div className="sec-it-head-actions">
-            {canEditContent && (
-              <>
-                <button type="button" className="sec-it-btn" disabled={busy} onClick={() => void onDownloadSample()}>
-                  Excel sample
-                </button>
-                <button
-                  type="button"
-                  className="sec-it-btn"
-                  disabled={busy}
-                  onClick={() => fileRef.current?.click()}
-                >
-                  Upload Excel
-                </button>
-                <input
-                  ref={fileRef}
-                  type="file"
-                  accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                  className="sec-it-file"
-                  aria-label="Upload Issue Tracking Excel"
-                  onChange={(e) => void onUpload(e.target.files?.[0] ?? null)}
-                />
-                <button type="button" className="sec-it-btn sec-it-btn-primary" disabled={busy} onClick={() => void onAddRow()}>
-                  + Add row
-                </button>
-              </>
-            )}
-            <button type="button" className="sec-it-close" aria-label="Close" onClick={onClose}>
-              ×
-            </button>
-          </div>
-        </header>
-
-        {error && <p className="sec-it-error">{error}</p>}
-
-        {importResult && (
-          <div className="sec-it-import-result">
-            <p>
-              Created <strong>{importResult.created.length}</strong>
-              {importResult.errors.length > 0 ? (
-                <>
-                  {" "}
-                  · <strong className="sec-it-err-count">{importResult.errors.length}</strong> row
-                  {importResult.errors.length === 1 ? "" : "s"} skipped / failed
-                </>
-              ) : (
-                <> · no row errors</>
-              )}
-              . Existing Defect IDs were not overwritten.
-            </p>
-            {importResult.errors.length > 0 && (
-              <ul>
-                {importResult.errors.map((e, i) => (
-                  <li key={`${e.row}-${i}`}>
-                    Row {e.row}
-                    {e.defect_id ? ` (${e.defect_id})` : ""}: {e.reason}
-                  </li>
-                ))}
-              </ul>
-            )}
-            <button type="button" className="sec-it-btn" onClick={() => setImportResult(null)}>
-              Dismiss
-            </button>
-          </div>
-        )}
-
-        <div className="sec-it-table-wrap">
-          {loading ? (
-            <p className="sec-it-muted">Loading…</p>
-          ) : (
-            <table className="sec-it-table">
-              <thead>
-                <tr>
-                  {ISSUE_TRACKING_FIELDS.map((field) => (
-                    <th
-                      key={field}
-                      className={ISSUE_TRACKING_RD_FIELDS.includes(field) ? "is-rd" : "is-dqa"}
-                    >
-                      {ISSUE_TRACKING_LABELS[field]}
-                    </th>
-                  ))}
-                  {canManageStructure && <th className="sec-it-actions-col"> </th>}
-                </tr>
-              </thead>
-              <tbody>
-                {rows.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan={ISSUE_TRACKING_FIELDS.length + (canManageStructure ? 1 : 0)}
-                      className="sec-it-empty"
-                    >
-                      No Issue Tracking rows yet. Add a row or upload Excel.
-                    </td>
-                  </tr>
-                ) : (
-                  rows.map((row) => (
-                    <tr key={row.id}>
-                      {ISSUE_TRACKING_FIELDS.map((field) => {
-                        const value = cellValue(row, field);
-                        const cellKey = `${row.id}:${field}`;
-                        const isSaving = savingCell === cellKey;
-                        return (
-                          <td
-                            key={field}
-                            className={ISSUE_TRACKING_RD_FIELDS.includes(field) ? "is-rd" : undefined}
-                          >
-                            {canEditContent ? (
-                              <textarea
-                                className={`sec-it-cell${isSaving ? " is-saving" : ""}`}
-                                rows={LONG_FIELDS.has(field) ? 3 : 2}
-                                value={value}
-                                readOnly={false}
-                                aria-readonly={false}
-                                aria-label={`${ISSUE_TRACKING_LABELS[field]} for ${row.defect_id || row.no || "row"}`}
-                                onChange={(e) => setCellDraft(row.id, field, e.target.value)}
-                                onBlur={(e) => {
-                                  void patchCell(row.id, field, e.target.value);
-                                }}
-                              />
-                            ) : (
-                              <span className="sec-it-readonly">{row[field] || "—"}</span>
-                            )}
-                          </td>
-                        );
-                      })}
-                      {canManageStructure && (
-                        <td>
-                          <button
-                            type="button"
-                            className="sec-it-del"
-                            disabled={busy}
-                            onClick={() => void onDelete(row.id)}
-                          >
-                            Delete
-                          </button>
-                        </td>
-                      )}
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+        </div>
+        <div className="sec-it-head-actions">
+          {canEditContent && (
+            <>
+              <button
+                type="button"
+                className="sec-it-btn"
+                disabled={busy}
+                onClick={() => void onDownloadSample()}
+              >
+                Excel sample
+              </button>
+              <button
+                type="button"
+                className="sec-it-btn"
+                disabled={busy}
+                onClick={() => fileRef.current?.click()}
+              >
+                Upload Excel
+              </button>
+              <input
+                ref={fileRef}
+                type="file"
+                accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                className="sec-it-file"
+                aria-label="Upload Issue Tracking Excel"
+                onChange={(e) => void onUpload(e.target.files?.[0] ?? null)}
+              />
+              <button
+                type="button"
+                className="sec-it-btn sec-it-btn-primary"
+                disabled={busy}
+                onClick={() => void onAddRow()}
+              >
+                + Add row
+              </button>
+            </>
           )}
         </div>
       </div>
-    </div>
+
+      {error && <p className="sec-it-error">{error}</p>}
+
+      {importResult && (
+        <div className="sec-it-import-result">
+          <p>
+            Created <strong>{importResult.created.length}</strong>
+            {importResult.errors.length > 0 ? (
+              <>
+                {" "}
+                · <strong className="sec-it-err-count">{importResult.errors.length}</strong> row
+                {importResult.errors.length === 1 ? "" : "s"} skipped / failed
+              </>
+            ) : (
+              <> · no row errors</>
+            )}
+            . Existing Defect IDs were not overwritten.
+          </p>
+          {importResult.errors.length > 0 && (
+            <ul>
+              {importResult.errors.map((e, i) => (
+                <li key={`${e.row}-${i}`}>
+                  Row {e.row}
+                  {e.defect_id ? ` (${e.defect_id})` : ""}: {e.reason}
+                </li>
+              ))}
+            </ul>
+          )}
+          <button type="button" className="sec-it-btn" onClick={() => setImportResult(null)}>
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      <div className="sec-it-table-wrap sec-it-page-table-wrap">
+        {loading ? (
+          <p className="sec-it-muted">Loading…</p>
+        ) : (
+          <table className="sec-it-table">
+            <thead>
+              <tr>
+                {ISSUE_TRACKING_FIELDS.map((field) => (
+                  <th
+                    key={field}
+                    className={ISSUE_TRACKING_RD_FIELDS.includes(field) ? "is-rd" : "is-dqa"}
+                  >
+                    {ISSUE_TRACKING_LABELS[field]}
+                  </th>
+                ))}
+                {canManageStructure && <th className="sec-it-actions-col"> </th>}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={ISSUE_TRACKING_FIELDS.length + (canManageStructure ? 1 : 0)}
+                    className="sec-it-empty"
+                  >
+                    No Issue Tracking rows yet. Add a row or upload Excel.
+                  </td>
+                </tr>
+              ) : (
+                rows.map((row) => (
+                  <tr key={row.id}>
+                    {ISSUE_TRACKING_FIELDS.map((field) => {
+                      const value = cellValue(row, field);
+                      const cellKey = `${row.id}:${field}`;
+                      const isSaving = savingCell === cellKey;
+                      return (
+                        <td
+                          key={field}
+                          className={ISSUE_TRACKING_RD_FIELDS.includes(field) ? "is-rd" : undefined}
+                        >
+                          {canEditContent ? (
+                            <textarea
+                              className={`sec-it-cell${isSaving ? " is-saving" : ""}`}
+                              rows={LONG_FIELDS.has(field) ? 3 : 2}
+                              value={value}
+                              readOnly={false}
+                              aria-readonly={false}
+                              aria-label={`${ISSUE_TRACKING_LABELS[field]} for ${row.defect_id || row.no || "row"}`}
+                              onChange={(e) => setCellDraft(row.id, field, e.target.value)}
+                              onBlur={(e) => {
+                                void patchCell(row.id, field, e.target.value);
+                              }}
+                            />
+                          ) : (
+                            <span className="sec-it-readonly">{row[field] || "—"}</span>
+                          )}
+                        </td>
+                      );
+                    })}
+                    {canManageStructure && (
+                      <td>
+                        <button
+                          type="button"
+                          className="sec-it-del"
+                          disabled={busy}
+                          onClick={() => void onDelete(row.id)}
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    )}
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </section>
   );
 }

@@ -1,6 +1,6 @@
 import { FormEvent, MouseEvent as ReactMouseEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { CycleDetailPanel } from "../components/CycleDetailPanel";
-import { IssueTrackingModal } from "../components/IssueTrackingModal";
+import { IssueTrackingPanel } from "../components/IssueTrackingPanel";
 import { LoadingIndicator } from "../components/LoadingIndicator";
 import { SavingIndicator } from "../components/SavingIndicator";
 import { useAuth } from "../context/AuthContext";
@@ -85,7 +85,10 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
   const [issueModal, setIssueModal] = useState<null | { mode: "create" | "edit"; issue?: SecurityIssue }>(
     null,
   );
-  /** Per-project Issue Tracking spreadsheet (roster row after Status). */
+  /**
+   * Per-project Issue Tracking child page (roster row after Status).
+   * Null = not on that sub-page; set = navigate to dedicated page (not a modal).
+   */
   const [issueTrackingRoster, setIssueTrackingRoster] = useState<SecurityRosterEntry | null>(null);
   /** When set, show cycle detail matrix (AIOSW security-update?cycle=…). */
   const [detailCycleId, setDetailCycleId] = useState<string | null>(null);
@@ -319,7 +322,27 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
           <span className="sec-bc-sep" aria-hidden="true">
             /
           </span>
-          {detailCycle ? (
+          {issueTrackingRoster ? (
+            <>
+              <button
+                type="button"
+                className="sec-bc-link"
+                onClick={() => {
+                  setIssueTrackingRoster(null);
+                  setTab("overview");
+                }}
+              >
+                BIOS Security Updates
+              </button>
+              <span className="sec-bc-sep" aria-hidden="true">
+                /
+              </span>
+              <span className="sec-bc-current">
+                Issue Tracking
+                {issueTrackingRoster.project_name ? ` · ${issueTrackingRoster.project_name}` : ""}
+              </span>
+            </>
+          ) : detailCycle ? (
             <>
               <button
                 type="button"
@@ -353,7 +376,7 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
 
         <div className="sec-toolbar-actions">
           <SavingIndicator status={saveStatus} />
-          {!detailCycle && (
+          {!detailCycle && !issueTrackingRoster && (
           <button
             type="button"
             className="sec-toggle-btn"
@@ -391,6 +414,16 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
             <LoadingIndicator />
             <span>Loading project roster...</span>
           </div>
+        ) : issueTrackingRoster ? (
+          <IssueTrackingPanel
+            roster={issueTrackingRoster}
+            cycleName={cycles.find((c) => c.id === issueTrackingRoster.cycle_id)?.name ?? ""}
+            canManageStructure={canManageStructure}
+            canEditContent={canEditIssueTracking}
+            busy={saveStatus.kind === "saving"}
+            runSave={runSave}
+            onBack={() => setIssueTrackingRoster(null)}
+          />
         ) : detailCycle ? (
           detailLoading ? (
             <div className="sec-loading" role="status" aria-busy="true">
@@ -472,7 +505,10 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
             }}
             onPatchRoster={patchRoster}
             onPatchRosterMany={patchRosterMany}
-            onOpenIssueTracking={setIssueTrackingRoster}
+            onOpenIssueTracking={(row) => {
+              closeCycleDetail();
+              setIssueTrackingRoster(row);
+            }}
           />
         ) : (
           <IssueSummaryPanel
@@ -530,21 +566,40 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
           onSave={async (input) => {
             setError("");
             try {
-              await runSave(async () => {
-                if (issueModal.mode === "edit" && issueModal.issue) {
+              const isEdit = issueModal.mode === "edit" && issueModal.issue;
+              const savedIssue = await runSave(async () => {
+                if (isEdit && issueModal.issue) {
                   const prev = issueModal.issue;
-                  await securityStore.updateIssue(prev.id, {
+                  return securityStore.updateIssue(prev.id, {
                     ...input,
                     cycle_ids: prev.cycle_ids,
                     project_ids: prev.project_ids,
                     project_names: prev.project_names,
                   });
-                } else {
-                  await securityStore.createIssue(input);
                 }
+                return securityStore.createIssue(input);
               });
+              // Optimistic slice update — avoid full refresh stale overwrite / missing card
+              // until a hard reload (also unhides brand-new items when a cycle filter is on).
+              setSnap((prev) => {
+                if (!prev) return prev;
+                if (isEdit) {
+                  return {
+                    ...prev,
+                    issues: prev.issues.map((i) => (i.id === savedIssue.id ? savedIssue : i)),
+                  };
+                }
+                return {
+                  ...prev,
+                  issues: [savedIssue, ...prev.issues.filter((i) => i.id !== savedIssue.id)],
+                };
+              });
+              if (!isEdit) {
+                setIssueCycleFilter("all");
+                setQuery("");
+                setTab("issues");
+              }
               setIssueModal(null);
-              await refresh();
               if (detailCycleId) {
                 const doc = await securityStore.loadCycleDetail(detailCycleId);
                 setDetailDoc(doc);
@@ -560,8 +615,10 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
                   setError("");
                   const id = issueModal.issue!.id;
                   await runSave(() => securityStore.deleteIssue(id));
+                  setSnap((prev) =>
+                    prev ? { ...prev, issues: prev.issues.filter((i) => i.id !== id) } : prev,
+                  );
                   setIssueModal(null);
-                  await refresh();
                   if (detailCycleId) {
                     const doc = await securityStore.loadCycleDetail(detailCycleId);
                     setDetailDoc(doc);
@@ -569,18 +626,6 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
                 }
               : undefined
           }
-        />
-      )}
-
-      {issueTrackingRoster && (
-        <IssueTrackingModal
-          roster={issueTrackingRoster}
-          cycleName={cycles.find((c) => c.id === issueTrackingRoster.cycle_id)?.name ?? ""}
-          canManageStructure={canManageStructure}
-          canEditContent={canEditIssueTracking}
-          busy={saveStatus.kind === "saving"}
-          runSave={runSave}
-          onClose={() => setIssueTrackingRoster(null)}
         />
       )}
     </div>

@@ -5656,6 +5656,11 @@ select.pi-state {
   overflow: hidden;
   padding-bottom: 16px;
 }
+/* Issue Tracking child page owns its table scrollport. */
+.sec-body:has(.sec-it-page) {
+  overflow: hidden;
+  padding-bottom: 16px;
+}
 /* Overview: Project roster owns vertical scroll (cycle card + pills stay put). */
 .sec-body:has(.sec-overview) {
   overflow: hidden;
@@ -6004,37 +6009,44 @@ button.sec-th-affordance:disabled {
   color: #fff;
   border-color: #2563eb;
 }
-.sec-it-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 90;
-  background: rgba(0, 0, 0, 0.6);
-  display: grid;
-  place-items: center;
-  padding: 16px;
-}
-.sec-it-modal {
-  width: min(1240px, 100%);
-  max-height: min(92vh, 900px);
+/* Issue Tracking — dedicated Security child page (not a modal). */
+.sec-it-page {
   display: flex;
   flex-direction: column;
+  gap: 0;
+  min-height: 0;
+  flex: 1;
   background: #303134;
   border: 1px solid #3c4043;
   border-radius: 12px;
   overflow: hidden;
 }
-.sec-it-head {
+.sec-it-page-toolbar {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
+  flex-wrap: wrap;
   padding: 14px 16px;
   border-bottom: 1px solid #3c4043;
 }
-.sec-it-head h2 {
+.sec-it-page-heading {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+}
+.sec-it-page-title {
   margin: 0;
-  font-size: 1.1rem;
+  font-size: 1.25rem;
+  font-weight: 700;
   color: #f1f3f4;
+}
+.sec-it-page-table-wrap {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
 }
 .sec-it-sub {
   margin: 0.25rem 0 0;
@@ -6065,16 +6077,6 @@ button.sec-th-affordance:disabled {
   border-color: #2563eb;
 }
 .sec-it-btn-primary:hover:not(:disabled) { background: #1d4ed8; }
-.sec-it-close {
-  border: none;
-  background: transparent;
-  color: #9aa0a6;
-  font-size: 1.4rem;
-  line-height: 1;
-  cursor: pointer;
-  padding: 0 4px;
-}
-.sec-it-close:hover { color: #fff; }
 .sec-it-file {
   position: absolute;
   width: 1px;
