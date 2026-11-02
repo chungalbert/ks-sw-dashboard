@@ -15,8 +15,11 @@ import {
   CycleDetailConflictError,
   deriveRosterStatusFromRelease,
   emptyCycleDetail,
+  ensureDetailTimestamps,
   newDetailItemId,
-  normalizeApplyCell,
+  normalizeCycleDetailItem,
+  normalizeProjectReleaseCell,
+  nowStamp,
 } from "./cycleDetailTypes";
 import type {
   SecurityIssueTrackingInput,
@@ -115,41 +118,24 @@ function saveLocalTracking(rows: SecurityIssueTrackingRow[]) {
 function normalizeDetailDoc(cycleId: string, raw: Partial<CycleDetailDoc> | null | undefined): CycleDetailDoc {
   const base = emptyCycleDetail(cycleId);
   if (!raw) return base;
+  const updated_at = String(raw.updated_at ?? nowStamp());
   const items: CycleDetailItem[] = Array.isArray(raw.items)
-    ? raw.items.map((item, i) => {
-        const appliesRaw =
-          item && typeof item === "object" && item.applies && typeof item.applies === "object"
-            ? (item.applies as Record<string, unknown>)
-            : {};
-        const applies: Record<string, ItemApplyCell> = {};
-        for (const [pid, v] of Object.entries(appliesRaw)) {
-          applies[pid] = normalizeApplyCell(v);
-        }
-        const issueIdRaw =
-          item && typeof item === "object" && "issue_id" in item
-            ? String((item as { issue_id?: unknown }).issue_id ?? "").trim()
-            : "";
-        return {
-          id: String(item?.id || newDetailItemId()),
-          ...(issueIdRaw ? { issue_id: issueIdRaw } : {}),
-          title: String(item?.title ?? ""),
-          detail: String(item?.detail ?? ""),
-          cycle_comment: String(item?.cycle_comment ?? ""),
-          applies,
-          sort_order: Number(item?.sort_order) || i,
-        };
-      })
+    ? raw.items.map((item, i) => normalizeCycleDetailItem(item, i, updated_at))
     : [];
-  const by_project =
+  const by_project_raw =
     raw.release && typeof raw.release === "object" && raw.release.by_project
-      ? { ...raw.release.by_project }
+      ? raw.release.by_project
       : {};
-  return {
+  const by_project: CycleDetailDoc["release"]["by_project"] = {};
+  for (const [pid, cell] of Object.entries(by_project_raw)) {
+    by_project[pid] = normalizeProjectReleaseCell(cell);
+  }
+  return ensureDetailTimestamps({
     cycle_id: cycleId,
     items,
     release: { by_project },
-    updated_at: String(raw.updated_at ?? new Date().toISOString()),
-  };
+    updated_at,
+  });
 }
 
 /** Seed matrix rows from issues already linked to this cycle (local / first open). */
@@ -162,12 +148,14 @@ export function seedDetailFromIssues(
     .filter((i) => i.cycle_ids.includes(cycleId))
     .slice()
     .sort((a, b) => a.title.localeCompare(b.title));
+  const stamped = nowStamp();
   const items: CycleDetailItem[] = linked.map((issue, i) => {
     const applies: Record<string, ItemApplyCell> = {};
     for (const pid of projectIds) {
       applies[pid] = {
         status: issue.project_ids.includes(pid) ? "Applied" : "",
         comment: "",
+        updated_at: stamped,
       };
     }
     return {
@@ -178,13 +166,19 @@ export function seedDetailFromIssues(
       cycle_comment: "",
       applies,
       sort_order: i,
+      field_updated_at: {
+        title: stamped,
+        detail: stamped,
+        cycle_comment: stamped,
+        sort_order: stamped,
+      },
     };
   });
   return {
     cycle_id: cycleId,
     items,
     release: { by_project: {} },
-    updated_at: new Date().toISOString(),
+    updated_at: stamped,
   };
 }
 
@@ -886,6 +880,7 @@ export const securityStore = {
   /** Push title / detail / reference into cycle detail rows that reference this issue. */
   async syncIssueToLinkedCycles(issue: SecurityIssue): Promise<void> {
     const detailLine = issue.reference_path || issue.detail || issue.oem_request_id || "";
+    const stamped = nowStamp();
     for (const cycleId of issue.cycle_ids) {
       const doc = await securityStore.loadCycleDetail(cycleId);
       if (!doc || doc.items.length === 0) continue;
@@ -900,6 +895,11 @@ export const securityStore = {
           issue_id: issue.id,
           title: issue.title,
           detail: detailLine || it.detail,
+          field_updated_at: {
+            ...(it.field_updated_at ?? {}),
+            title: stamped,
+            detail: stamped,
+          },
         };
       });
       if (changed) {

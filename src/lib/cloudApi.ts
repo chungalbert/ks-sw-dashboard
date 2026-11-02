@@ -17,8 +17,13 @@ import {
   seedStandardProjectColumns,
   type ProjectFieldPatch,
 } from "./projectsUiStore";
-import type { CycleDetailDoc, CycleDetailItem, ItemApplyCell } from "./cycleDetailTypes";
-import { CycleDetailConflictError, normalizeApplyCell } from "./cycleDetailTypes";
+import type { CycleDetailDoc } from "./cycleDetailTypes";
+import {
+  CycleDetailConflictError,
+  ensureDetailTimestamps,
+  normalizeCycleDetailItem,
+  normalizeProjectReleaseCell,
+} from "./cycleDetailTypes";
 import type {
   SecurityIssueTrackingInput,
   SecurityIssueTrackingRow,
@@ -191,38 +196,25 @@ function mapSecurityIssue(row: Record<string, unknown>): SecurityIssue {
 
 function mapSecurityCycleDetail(row: Record<string, unknown>): CycleDetailDoc {
   const cycleId = String(row.cycle_id ?? "");
+  const updated_at = String(row.updated_at ?? new Date().toISOString());
   const itemsRaw = Array.isArray(row.items) ? row.items : [];
-  const items: CycleDetailItem[] = itemsRaw.map((item, i) => {
-    const o = (item && typeof item === "object" ? item : {}) as Record<string, unknown>;
-    const appliesRaw =
-      o.applies && typeof o.applies === "object" ? (o.applies as Record<string, unknown>) : {};
-    const applies: Record<string, ItemApplyCell> = {};
-    for (const [pid, v] of Object.entries(appliesRaw)) {
-      applies[pid] = normalizeApplyCell(v);
-    }
-    const issueId = String(o.issue_id ?? "").trim();
-    return {
-      id: String(o.id ?? `cdi-${i}`),
-      ...(issueId ? { issue_id: issueId } : {}),
-      title: String(o.title ?? ""),
-      detail: String(o.detail ?? ""),
-      cycle_comment: String(o.cycle_comment ?? ""),
-      applies,
-      sort_order: Number(o.sort_order) || i,
-    };
-  });
+  const items = itemsRaw.map((item, i) => normalizeCycleDetailItem(item, i, updated_at));
   const releaseRaw =
     row.release && typeof row.release === "object" ? (row.release as Record<string, unknown>) : {};
-  const by_project =
+  const byRaw =
     releaseRaw.by_project && typeof releaseRaw.by_project === "object"
-      ? (releaseRaw.by_project as CycleDetailDoc["release"]["by_project"])
+      ? (releaseRaw.by_project as Record<string, unknown>)
       : {};
-  return {
+  const by_project: CycleDetailDoc["release"]["by_project"] = {};
+  for (const [pid, cell] of Object.entries(byRaw)) {
+    by_project[pid] = normalizeProjectReleaseCell(cell);
+  }
+  return ensureDetailTimestamps({
     cycle_id: cycleId,
     items,
     release: { by_project },
-    updated_at: String(row.updated_at ?? new Date().toISOString()),
-  };
+    updated_at,
+  });
 }
 
 /** Hidden project row: durable store for custom column defs when Data API cache misses project_columns. */
