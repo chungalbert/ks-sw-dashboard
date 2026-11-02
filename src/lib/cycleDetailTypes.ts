@@ -586,18 +586,23 @@ export function isReleaseTestComplete(value: string | undefined | null): boolean
  * Internal / SA BVT / Issue Clarification (`Test Complete`) / Test Pass (`Done`) /
  * Completed (DQA Done AND Sign off Done).
  *
- * Priority (highest first):
+ * Priority (highest first) — same five labels as overview chips, plus Not Started:
  * 1. DQA Test Complete = Done AND Sign off = Done → Completed
- * 2. DQA Test Complete = Test Complete → Issue Clarification
- * 3. DQA Test Complete = Done (Sign off not Done) → Issue Clarification
- *    (row-only intermediate; chips count IC for `Test Complete`, Test Pass for `Done`)
- * 4. Internal Release + SA BVT Test Done → SA BVT
+ * 2. DQA Test Complete = Done (Sign off not Done) → Test Pass
+ * 3. DQA Test Complete = Test Complete → Issue Clarification
+ * 4. SA BVT Test Done → SA BVT
  * 5. Internal Release Done → Internal release
  * 6. Else → Not Started
  */
 export function deriveRosterStatusFromRelease(
   cell: ProjectReleaseCell | undefined | null,
-): "Not Started" | "Internal release" | "SA BVT" | "Issue Clarification" | "Completed" {
+):
+  | "Not Started"
+  | "Internal release"
+  | "SA BVT"
+  | "Issue Clarification"
+  | "Test Pass"
+  | "Completed" {
   const ir = isReleaseDone(cell?.internal_release);
   const sa = isReleaseDone(cell?.sa_bvt_test);
   const dqaDone = isReleaseDone(cell?.external_release_web);
@@ -605,8 +610,9 @@ export function deriveRosterStatusFromRelease(
   const signOff = isReleaseDone(cell?.external_release_wu);
 
   if (dqaDone && signOff) return "Completed";
-  if (dqaTestComplete || dqaDone) return "Issue Clarification";
-  if (ir && sa) return "SA BVT";
+  if (dqaDone) return "Test Pass";
+  if (dqaTestComplete) return "Issue Clarification";
+  if (sa) return "SA BVT";
   if (ir) return "Internal release";
   return "Not Started";
 }
