@@ -6539,6 +6539,14 @@ button.sec-th-affordance:disabled {
   grid-column: 2;
 }
 .sec-modal-add-issue,
+.sec-issue-cycle-picker-actions {
+  display: inline-flex;
+  gap: 10px;
+  align-items: center;
+}
+.sec-issue-cycle-picker .sec-project-checklist {
+  max-height: 180px;
+}
 .sec-modal-issue {
   width: min(640px, 100%);
 }

@@ -18,6 +18,7 @@ import {
   normalizeEcrHref,
 } from "../lib/cycleDetailTypes";
 import type { SecurityCycle, SecurityIssue, SecurityRosterEntry } from "../lib/securityTypes";
+import { issueAllowedInCycle } from "../lib/securityTypes";
 import { seedDetailFromIssues } from "../lib/securityStore";
 import type { Project } from "../lib/types";
 import {
@@ -435,6 +436,7 @@ export function CycleDetailPanel({
 
       {canManageStructure && addIssueOpen ? (
         <AddIssueToCycleModal
+          cycleId={cycle.id}
           issues={issues}
           excludeIssueIds={linkedIssueIds}
           projects={projectCols}
@@ -811,6 +813,7 @@ export function CycleDetailPanel({
 }
 
 function AddIssueToCycleModal({
+  cycleId,
   issues,
   excludeIssueIds,
   projects,
@@ -818,6 +821,7 @@ function AddIssueToCycleModal({
   onClose,
   onAdd,
 }: {
+  cycleId: string;
   issues: SecurityIssue[];
   excludeIssueIds: Set<string>;
   projects: ProjectCol[];
@@ -832,10 +836,10 @@ function AddIssueToCycleModal({
   const available = useMemo(
     () =>
       issues
-        .filter((i) => !excludeIssueIds.has(i.id))
+        .filter((i) => !excludeIssueIds.has(i.id) && issueAllowedInCycle(i, cycleId))
         .slice()
         .sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: "base" })),
-    [issues, excludeIssueIds],
+    [issues, excludeIssueIds, cycleId],
   );
 
   const [issueId, setIssueId] = useState("");
@@ -977,7 +981,8 @@ function AddIssueToCycleModal({
 
         {available.length === 0 ? (
           <p className="sec-muted">
-            No unused saved items — create one under Issue Summary, or all are already in this cycle.
+            No unused saved items for this cycle — create one under Issue Summary (check this cycle),
+            or all allowed items are already on the matrix.
           </p>
         ) : null}
         {formError ? <p className="sec-error">{formError}</p> : null}

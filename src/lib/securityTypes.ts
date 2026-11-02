@@ -112,6 +112,20 @@ export type SecurityIssueInput = {
   project_names?: string;
 };
 
+/**
+ * Whether an Issue Summary item may appear for a cycle (filter pills / + New item).
+ * Empty `cycle_ids` = unrestricted (legacy / “any cycle”).
+ * Non-empty = only the checked cycles from Add/Edit Security Update Item.
+ */
+export function issueAllowedInCycle(
+  issue: Pick<SecurityIssue, "cycle_ids">,
+  cycleId: string,
+): boolean {
+  if (!cycleId) return false;
+  if (!issue.cycle_ids.length) return true;
+  return issue.cycle_ids.includes(cycleId);
+}
+
 export const SECURITY_STATUSES: SecurityRosterStatus[] = [
   "Not Started",
   "Internal release",
