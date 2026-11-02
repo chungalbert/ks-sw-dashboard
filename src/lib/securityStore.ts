@@ -1125,6 +1125,27 @@ export const securityStore = {
       .sort((a, b) => a.sort_order - b.sort_order);
   },
 
+  /** Cycle-wide Issue Tracking 總表 — all projects in the cycle. */
+  async listIssueTrackingByCycle(cycleId: string): Promise<SecurityIssueTrackingRow[]> {
+    if (await probeCloud()) {
+      try {
+        return await cloudApi.listSecurityIssueTrackingByCycle(cycleId);
+      } catch (err) {
+        if (!isSecurityTableMissing(err)) throw err;
+        cloudOk = false;
+      }
+    }
+    return loadLocalTracking()
+      .filter((r) => r.cycle_id === cycleId)
+      .sort((a, b) => {
+        const byName = a.project_name.localeCompare(b.project_name, undefined, {
+          sensitivity: "base",
+        });
+        if (byName !== 0) return byName;
+        return a.sort_order - b.sort_order;
+      });
+  },
+
   async createIssueTracking(input: SecurityIssueTrackingInput): Promise<SecurityIssueTrackingRow> {
     if (await probeCloud()) {
       try {

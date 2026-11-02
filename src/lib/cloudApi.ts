@@ -1911,6 +1911,19 @@ export const cloudApi = {
     return (data ?? []).map((row) => mapSecurityIssueTracking(row as Record<string, unknown>));
   },
 
+  /** All Issue Tracking rows for a cycle (every roster / project). */
+  async listSecurityIssueTrackingByCycle(cycleId: string): Promise<SecurityIssueTrackingRow[]> {
+    const { data, error } = await sb()
+      .from("security_issue_tracking")
+      .select("*")
+      .eq("cycle_id", cycleId)
+      .order("project_name", { ascending: true })
+      .order("sort_order", { ascending: true })
+      .order("created_at", { ascending: true });
+    if (error) throw error;
+    return (data ?? []).map((row) => mapSecurityIssueTracking(row as Record<string, unknown>));
+  },
+
   async createSecurityIssueTracking(
     input: SecurityIssueTrackingInput,
   ): Promise<SecurityIssueTrackingRow> {

@@ -1,6 +1,7 @@
 import { FormEvent, MouseEvent as ReactMouseEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { CycleDetailPanel } from "../components/CycleDetailPanel";
 import { IssueTrackingPanel } from "../components/IssueTrackingPanel";
+import { IssueTrackingSummaryPanel } from "../components/IssueTrackingSummaryPanel";
 import { LoadingIndicator } from "../components/LoadingIndicator";
 import { SavingIndicator } from "../components/SavingIndicator";
 import { useAuth } from "../context/AuthContext";
@@ -91,6 +92,8 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
    * Null = not on that sub-page; set = navigate to dedicated page (not a modal).
    */
   const [issueTrackingRoster, setIssueTrackingRoster] = useState<SecurityRosterEntry | null>(null);
+  /** Cycle-wide Issue Tracking 總表 (all projects in the active cycle). */
+  const [issueTrackingSummaryOpen, setIssueTrackingSummaryOpen] = useState(false);
   /** When set, show cycle detail matrix (AIOSW security-update?cycle=…). */
   const [detailCycleId, setDetailCycleId] = useState<string | null>(null);
   const [detailDoc, setDetailDoc] = useState<CycleDetailDoc | null>(null);
@@ -358,7 +361,24 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
           <span className="sec-bc-sep" aria-hidden="true">
             /
           </span>
-          {issueTrackingRoster ? (
+          {issueTrackingSummaryOpen ? (
+            <>
+              <button
+                type="button"
+                className="sec-bc-link"
+                onClick={() => {
+                  setIssueTrackingSummaryOpen(false);
+                  setTab("overview");
+                }}
+              >
+                BIOS Security Updates
+              </button>
+              <span className="sec-bc-sep" aria-hidden="true">
+                /
+              </span>
+              <span className="sec-bc-current">Issue Tracking 總表</span>
+            </>
+          ) : issueTrackingRoster ? (
             <>
               <button
                 type="button"
@@ -412,7 +432,7 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
 
         <div className="sec-toolbar-actions">
           <SavingIndicator status={saveStatus} />
-          {!detailCycle && !issueTrackingRoster && (
+          {!detailCycle && !issueTrackingRoster && !issueTrackingSummaryOpen && (
           <button
             type="button"
             className="sec-toggle-btn"
@@ -450,6 +470,17 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
             <LoadingIndicator />
             <span>Loading project roster...</span>
           </div>
+        ) : issueTrackingSummaryOpen && activeCycle ? (
+          <IssueTrackingSummaryPanel
+            cycleId={activeCycle.id}
+            cycleName={activeCycle.name}
+            roster={cycleRoster}
+            canManageStructure={canManageStructure}
+            canEditContent={canEditIssueTracking}
+            busy={saveStatus.kind === "saving"}
+            runSave={runSave}
+            onBack={() => setIssueTrackingSummaryOpen(false)}
+          />
         ) : issueTrackingRoster ? (
           <IssueTrackingPanel
             roster={issueTrackingRoster}
@@ -574,7 +605,14 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
             onPatchRosterMany={patchRosterMany}
             onOpenIssueTracking={(row) => {
               closeCycleDetail();
+              setIssueTrackingSummaryOpen(false);
               setIssueTrackingRoster(row);
+            }}
+            onOpenIssueTrackingSummary={() => {
+              if (!activeCycle) return;
+              closeCycleDetail();
+              setIssueTrackingRoster(null);
+              setIssueTrackingSummaryOpen(true);
             }}
           />
         ) : (
@@ -723,6 +761,7 @@ function OverviewPanel({
   onPatchRoster,
   onPatchRosterMany,
   onOpenIssueTracking,
+  onOpenIssueTrackingSummary,
 }: {
   cycles: SecurityCycle[];
   allCycles: SecurityCycle[];
@@ -740,6 +779,7 @@ function OverviewPanel({
   onPatchRoster: (id: string, patch: SecurityRosterPatch) => void;
   onPatchRosterMany: (ids: string[], patch: SecurityRosterPatch) => Promise<void>;
   onOpenIssueTracking: (row: SecurityRosterEntry) => void;
+  onOpenIssueTrackingSummary: () => void;
 }) {
   const [batchModal, setBatchModal] = useState<null | "wave" | "reviewer">(null);
 
@@ -859,10 +899,33 @@ function OverviewPanel({
 
       <section className="sec-roster" aria-label="Project roster">
         <div className="sec-roster-head">
-          <h2>Project roster</h2>
-          <p>
-            {roster.length} {roster.length === 1 ? "entry" : "entries"}
-          </p>
+          <div className="sec-roster-head-text">
+            <h2>Project roster</h2>
+            <p>
+              {roster.length} {roster.length === 1 ? "entry" : "entries"}
+            </p>
+          </div>
+          <button
+            type="button"
+            className="sec-it-summary-entry"
+            onClick={onOpenIssueTrackingSummary}
+            disabled={!activeCycle}
+            title={
+              activeCycle
+                ? `Open Issue Tracking 總表 for ${activeCycle.name}`
+                : "Select a cycle first"
+            }
+          >
+            <span className="sec-it-summary-entry-icon" aria-hidden="true">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />
+              </svg>
+            </span>
+            <span className="sec-it-summary-entry-copy">
+              <strong>Issue Tracking 總表</strong>
+              <span>All projects · current cycle</span>
+            </span>
+          </button>
         </div>
         <div className="sec-roster-table-wrap">
           <table className="sec-roster-table">
