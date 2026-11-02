@@ -3317,6 +3317,63 @@ select.pi-state {
 
 .personnel-add-member:hover { background: #1d4ed8; border-color: #1d4ed8; }
 
+.personnel-bulk-file {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.personnel-bulk-result {
+  width: min(560px, 100%);
+  max-height: min(80vh, 640px);
+}
+
+.personnel-bulk-summary {
+  margin: 0 0 0.75rem;
+  color: #c8c9cc;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.personnel-bulk-err-count { color: #f87171; }
+
+.personnel-bulk-section {
+  margin: 0 0 0.85rem;
+}
+
+.personnel-bulk-section h3 {
+  margin: 0 0 0.35rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #9ca3af;
+}
+
+.personnel-bulk-list {
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  list-style: none;
+  max-height: 12rem;
+  overflow: auto;
+  border-radius: 8px;
+  background: #1a1b1e;
+  border: 1px solid #2e2f33;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: #e5e7eb;
+}
+
+.personnel-bulk-list li + li { margin-top: 0.35rem; }
+
+.personnel-bulk-list.is-errors { color: #fecaca; }
+
 .personnel-modal-backdrop {
   position: fixed;
   inset: 0;
