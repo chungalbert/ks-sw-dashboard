@@ -5656,6 +5656,22 @@ select.pi-state {
   overflow: hidden;
   padding-bottom: 16px;
 }
+/* Overview: Project roster owns vertical scroll (cycle card + pills stay put). */
+.sec-body:has(.sec-overview) {
+  overflow: hidden;
+  padding-bottom: 16px;
+}
+.sec-overview {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  gap: 14px;
+}
+.sec-overview > .sec-cycle-card,
+.sec-overview > .sec-cycle-pills {
+  flex-shrink: 0;
+}
 .sec-error {
   margin: 0;
   padding: 10px 12px;
@@ -5776,8 +5792,13 @@ select.pi-state {
   border-radius: 14px;
   padding: 14px 0 8px;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 .sec-roster-head {
+  flex-shrink: 0;
   padding: 0 16px 10px;
 }
 .sec-roster-head h2 {
@@ -5789,7 +5810,13 @@ select.pi-state {
   color: var(--sec-muted);
   font-size: 12px;
 }
-.sec-roster-table-wrap { overflow: auto; }
+.sec-roster-table-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
 .sec-roster-table {
   width: 100%;
   border-collapse: collapse;
@@ -5803,6 +5830,10 @@ select.pi-state {
   vertical-align: middle;
 }
 .sec-roster-table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--sec-panel);
   color: var(--sec-muted);
   font-weight: 600;
   font-size: 12px;
@@ -5853,6 +5884,7 @@ button.sec-th-affordance:disabled {
   padding: 28px 16px !important;
 }
 .sec-roster-footer {
+  flex-shrink: 0;
   margin: 0;
   padding: 10px 16px 4px;
   color: var(--sec-muted);
