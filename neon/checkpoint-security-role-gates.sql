@@ -1,6 +1,7 @@
--- DE: CheckPoint edit on all projects (see + update), without full Admin/DL
+-- DE: CheckPoint edit on all projects (see + update), without full Admin/DM/DL
 -- Projects & Issues elevated (columns/delete). Security RLS stays open (UI gates).
 -- Apply on Neon after deploy; refresh Data API schema cache if needed.
+-- Incremental DM elevation: also see neon/dm-projects-elevated.sql.
 
 CREATE OR REPLACE FUNCTION public.is_checkpoint_elevated()
 RETURNS boolean
@@ -11,13 +12,13 @@ SET search_path TO 'public'
 AS $$
   select coalesce((
     select p.is_admin
-      or coalesce(p.personnel_role, '') in ('Admin', 'DL', 'DE')
+      or coalesce(p.personnel_role, '') in ('Admin', 'DM', 'DL', 'DE')
     from public.profiles p
     where p.id = auth.user_id()
   ), false);
 $$;
 
--- DE (and Admin/DL) can see every project so CheckPoint is reachable.
+-- DE (and Admin/DM/DL) can see every project so CheckPoint is reachable.
 DROP POLICY IF EXISTS projects_select ON public.projects;
 CREATE POLICY projects_select ON public.projects
   FOR SELECT USING (

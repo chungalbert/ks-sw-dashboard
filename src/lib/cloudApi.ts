@@ -60,7 +60,7 @@ import type {
 import { canManageProjectsIssues, normalizePersonnelRole, normalizeTaskStatus, WORK_LOG_TYPES } from "./types";
 import { DEFAULT_PASSWORD, hasNeonConfig, usernameFromEmail } from "./util";
 
-/** Admin + DL elevated for Projects & Issues (not Personnel Add Member). */
+/** Admin + DM + DL elevated for Projects & Issues (not Personnel Add Member). */
 function isProjectsElevated(me: Pick<Profile, "is_admin" | "personnel_role">): boolean {
   return canManageProjectsIssues(normalizePersonnelRole(me));
 }
@@ -890,7 +890,7 @@ export const cloudApi = {
   async addProjectColumn(label: string, id?: string): Promise<ProjectColumn> {
     const me = await cloudApi.currentUser();
     if (!me) throw new Error("尚未登入");
-    if (!isProjectsElevated(me)) throw new Error("只有 Admin 或 DL 可以新增欄位");
+    if (!isProjectsElevated(me)) throw new Error("只有 Admin / DM / DL 可以新增欄位");
     const trimmed = label.trim();
     if (!trimmed) throw new Error("欄位名稱不能空白");
     if (isReservedProjectColumnLabel(trimmed)) {
@@ -943,7 +943,7 @@ export const cloudApi = {
   async removeProjectColumn(columnId: string) {
     const me = await cloudApi.currentUser();
     if (!me) throw new Error("尚未登入");
-    if (!isProjectsElevated(me)) throw new Error("只有 Admin 或 DL 可以刪除欄位");
+    if (!isProjectsElevated(me)) throw new Error("只有 Admin / DM / DL 可以刪除欄位");
 
     const metaCols = await cloudApi.listProjectColumnsFromMeta();
     const target = metaCols.find((col) => col.id === columnId);
@@ -997,7 +997,7 @@ export const cloudApi = {
   async replaceProjectColumns(columns: ProjectColumn[]): Promise<ProjectColumn[]> {
     const me = await cloudApi.currentUser();
     if (!me) throw new Error("尚未登入");
-    if (!isProjectsElevated(me)) throw new Error("只有 Admin 或 DL 可以編輯欄位");
+    if (!isProjectsElevated(me)) throw new Error("只有 Admin / DM / DL 可以編輯欄位");
 
     const labels = new Set<string>();
     const normalized: ProjectColumn[] = [];

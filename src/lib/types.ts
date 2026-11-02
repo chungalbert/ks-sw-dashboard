@@ -152,9 +152,10 @@ export function canViewWorkLog(role: PersonnelRole): boolean {
 /**
  * Projects & Issues page elevated access (same as Admin for that page):
  * edit mode, columns, create/delete. Personnel Add Member/ACTIONS stay Admin-only.
+ * DM matches Admin on this page (and elsewhere) except Personnel admin actions.
  */
 export function canManageProjectsIssues(role: PersonnelRole): boolean {
-  return role === "Admin" || role === "DL";
+  return role === "Admin" || role === "DM" || role === "DL";
 }
 
 /** Excel sample + bulk upload on Projects & Issues (Admin / DM / DL). */
@@ -162,9 +163,12 @@ export function canBulkCreateProjects(role: PersonnelRole): boolean {
   return role === "Admin" || role === "DM" || role === "DL";
 }
 
-/** CheckPoint open/edit/save/add/delete — Admin / DL / DE (not full Projects edit mode). */
+/**
+ * CheckPoint open/edit/save/add/delete — Admin / DM / DL / DE.
+ * DE does not get full Projects edit mode / columns; Admin/DM/DL do.
+ */
 export function canEditProjectCheckpoints(role: PersonnelRole): boolean {
-  return role === "Admin" || role === "DL" || role === "DE";
+  return role === "Admin" || role === "DM" || role === "DL" || role === "DE";
 }
 
 /**

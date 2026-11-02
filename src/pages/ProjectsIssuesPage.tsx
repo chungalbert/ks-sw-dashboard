@@ -279,11 +279,11 @@ export function ProjectsIssuesPage({
   };
 
   const personnelRole = user ? normalizePersonnelRole(user) : "DE";
-  /** Admin + DL: full Projects & Issues privileges (edit/columns/create). */
+  /** Admin + DM + DL: full Projects & Issues privileges (edit/columns/create). */
   const canElevateProjects = canManageProjectsIssues(personnelRole);
-  /** Admin + DM + DL: Excel sample + bulk upload (not full edit mode). */
+  /** Admin + DM + DL: Excel sample + bulk upload. */
   const canBulkProjects = canBulkCreateProjects(personnelRole);
-  /** Admin + DL + DE: CheckPoint edit (not full project edit mode). */
+  /** Admin + DM + DL + DE: CheckPoint edit (DE lacks full project edit mode). */
   const canEditCpByRole = canEditProjectCheckpoints(personnelRole);
   const canCreate = Boolean(canElevateProjects || role === "leader");
   /** Column tools (+ ADD / Remove / reorder) only while elevated user is in edit mode on the list. */
@@ -464,7 +464,7 @@ export function ProjectsIssuesPage({
   const onAddProjectColumn = (event: FormEvent) => {
     event.preventDefault();
     if (!canElevateProjects || !editMode) {
-      setError("只有 Admin 或 DL 可以在編輯模式新增欄位");
+      setError("只有 Admin / DM / DL 可以在編輯模式新增欄位");
       return;
     }
     setError("");
@@ -481,7 +481,7 @@ export function ProjectsIssuesPage({
   const onRemoveProjectColumn = (event: FormEvent) => {
     event.preventDefault();
     if (!canElevateProjects || !editMode) {
-      setError("只有 Admin 或 DL 可以在編輯模式刪除欄位");
+      setError("只有 Admin / DM / DL 可以在編輯模式刪除欄位");
       return;
     }
     const col = draftColumns.find((c) => c.id === removeColId);
@@ -2076,7 +2076,7 @@ export function ProjectsIssuesPage({
                     </div>
                   </div>
                 ) : (
-                  <p className="pi-checkpoint-hint">Only project leaders, Admin, DL, or DE can edit CheckPoints.</p>
+                  <p className="pi-checkpoint-hint">Only project leaders, Admin, DM, DL, or DE can edit CheckPoints.</p>
                 )}
               </div>
 
