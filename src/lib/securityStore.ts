@@ -22,6 +22,7 @@ import {
   normalizeCycleDetailItem,
   normalizeProjectReleaseCell,
   nowStamp,
+  projectIdsWithApplyStatus,
 } from "./cycleDetailTypes";
 import type {
   SecurityIssueTrackingInput,
@@ -1008,6 +1009,84 @@ export const securityStore = {
     map[normalized.cycle_id] = normalized;
     saveLocalDetails(map);
     return normalized;
+  },
+
+  /**
+   * Rebuild Issue Summary `project_ids` / `project_names` from cycle-detail apply cells.
+   * Source of truth is matrix status: Applied + Not Applied (not blank / Not Applicable).
+   * Pass every known detail doc so multi-cycle issues union correctly.
+   */
+  async syncIssueProjectsFromDetails(
+    detailsByCycleId: Record<string, CycleDetailDoc>,
+  ): Promise<SecurityIssue[]> {
+    const snap = await securityStore.load();
+    const nameById = new Map<string, string>();
+    const orderById = new Map<string, number>();
+    for (const r of snap.roster) {
+      if (r.project_name && !nameById.has(r.project_id)) nameById.set(r.project_id, r.project_name);
+      if (!orderById.has(r.project_id)) orderById.set(r.project_id, r.sort_order);
+    }
+
+    const issueIds = new Set<string>();
+    for (const doc of Object.values(detailsByCycleId)) {
+      for (const it of doc.items) {
+        if (it.issue_id) issueIds.add(it.issue_id);
+      }
+    }
+
+    const updated: SecurityIssue[] = [];
+    for (const issueId of issueIds) {
+      const issue = snap.issues.find((i) => i.id === issueId);
+      if (!issue) continue;
+
+      const idSet = new Set<string>();
+      const cycleIds =
+        issue.cycle_ids.length > 0 ? issue.cycle_ids : Object.keys(detailsByCycleId);
+      for (const cid of cycleIds) {
+        const doc = detailsByCycleId[cid];
+        if (!doc) continue;
+        const item = doc.items.find((it) => it.issue_id === issueId);
+        if (!item) continue;
+        for (const pid of projectIdsWithApplyStatus(item.applies)) idSet.add(pid);
+      }
+      // Always include applies from docs that reference this issue even if cycle_ids drifted.
+      for (const doc of Object.values(detailsByCycleId)) {
+        const item = doc.items.find((it) => it.issue_id === issueId);
+        if (!item) continue;
+        for (const pid of projectIdsWithApplyStatus(item.applies)) idSet.add(pid);
+      }
+
+      const project_ids = [...idSet].sort((a, b) => {
+        const ao = orderById.get(a) ?? 9999;
+        const bo = orderById.get(b) ?? 9999;
+        if (ao !== bo) return ao - bo;
+        return (nameById.get(a) ?? a).localeCompare(nameById.get(b) ?? b);
+      });
+      const project_names = project_ids
+        .map((pid) => nameById.get(pid) || pid)
+        .join(", ");
+
+      const sameIds =
+        project_ids.length === issue.project_ids.length &&
+        project_ids.every((pid) => issue.project_ids.includes(pid));
+      if (sameIds && project_names === (issue.project_names ?? "").trim()) continue;
+
+      const next = await securityStore.updateIssue(
+        issueId,
+        {
+          title: issue.title,
+          oem_request_id: issue.oem_request_id,
+          detail: issue.detail,
+          reference_path: issue.reference_path,
+          cycle_ids: issue.cycle_ids,
+          project_ids,
+          project_names,
+        },
+        { syncLinkedCycles: false },
+      );
+      updated.push(next);
+    }
+    return updated;
   },
 
   /**

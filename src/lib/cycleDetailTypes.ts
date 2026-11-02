@@ -134,6 +134,22 @@ export function emptyApplyCell(): ItemApplyCell {
   return { status: "", comment: "" };
 }
 
+/**
+ * Project ids that count toward Issue Summary → Projects.
+ * Includes Applied / Not Applied; excludes blank and Not Applicable.
+ */
+export function projectIdsWithApplyStatus(
+  applies: Record<string, ItemApplyCell | undefined> | null | undefined,
+): string[] {
+  if (!applies || typeof applies !== "object") return [];
+  const out: string[] = [];
+  for (const [pid, cell] of Object.entries(applies)) {
+    const s = normalizeApplyStatus(cell?.status);
+    if (s === "Applied" || s === "Not Applied") out.push(pid);
+  }
+  return out;
+}
+
 export function normalizeApplyStatus(raw: unknown): ItemApplyStatus {
   const s = String(raw ?? "");
   if (s === "Applied" || s === "Not Applied" || s === "Not Applicable") return s;
