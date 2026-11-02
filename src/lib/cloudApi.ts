@@ -20,6 +20,10 @@ import {
 import type { CycleDetailDoc, CycleDetailItem, ItemApplyCell } from "./cycleDetailTypes";
 import { normalizeApplyCell } from "./cycleDetailTypes";
 import type {
+  SecurityIssueTrackingInput,
+  SecurityIssueTrackingRow,
+} from "./securityIssueTracking";
+import type {
   NewCycleInput,
   SecurityCycle,
   SecurityIssue,
@@ -77,6 +81,37 @@ function asJsonStringArray(value: unknown): string[] {
 function normalizeSecurityStatus(raw: string | undefined): SecurityRosterStatus {
   if (raw && (SECURITY_STATUSES as string[]).includes(raw)) return raw as SecurityRosterStatus;
   return "Not Started";
+}
+
+function mapSecurityIssueTracking(row: Record<string, unknown>): SecurityIssueTrackingRow {
+  const str = (k: string) => (row[k] != null ? String(row[k]) : "");
+  return {
+    id: String(row.id),
+    cycle_id: String(row.cycle_id),
+    roster_id: String(row.roster_id),
+    project_id: str("project_id"),
+    project_name: str("project_name"),
+    task: str("task"),
+    issue_date: str("issue_date"),
+    no: str("no"),
+    defect_id: str("defect_id"),
+    title: str("title"),
+    fr: str("fr"),
+    fail_unit: str("fail_unit"),
+    condition_text: str("condition_text"),
+    steps_recover: str("steps_recover"),
+    observed_symptom: str("observed_symptom"),
+    dqa_owner: str("dqa_owner"),
+    dqa_verify_data: str("dqa_verify_data"),
+    dqa_comments: str("dqa_comments"),
+    pm: str("pm"),
+    rd_owner: str("rd_owner"),
+    rd_comments: str("rd_comments"),
+    conclusion: str("conclusion"),
+    sort_order: Number(row.sort_order ?? 0),
+    created_at: row.created_at != null ? String(row.created_at) : undefined,
+    updated_at: row.updated_at != null ? String(row.updated_at) : undefined,
+  };
 }
 
 function parseWavesJson(raw: unknown): SecurityWave[] {
@@ -1808,6 +1843,103 @@ export const cloudApi = {
 
   async deleteSecurityIssue(id: string): Promise<void> {
     const { error } = await sb().from("security_issues").delete().eq("id", id);
+    if (error) throw error;
+  },
+
+  async listSecurityIssueTracking(rosterId: string): Promise<SecurityIssueTrackingRow[]> {
+    const { data, error } = await sb()
+      .from("security_issue_tracking")
+      .select("*")
+      .eq("roster_id", rosterId)
+      .order("sort_order", { ascending: true })
+      .order("created_at", { ascending: true });
+    if (error) throw error;
+    return (data ?? []).map((row) => mapSecurityIssueTracking(row as Record<string, unknown>));
+  },
+
+  async createSecurityIssueTracking(
+    input: SecurityIssueTrackingInput,
+  ): Promise<SecurityIssueTrackingRow> {
+    const me = await cloudApi.currentUser();
+    const existing = await cloudApi.listSecurityIssueTracking(input.roster_id);
+    const maxSort = existing.reduce((m, r) => Math.max(m, r.sort_order), -1);
+    const payload: Record<string, unknown> = {
+      cycle_id: input.cycle_id,
+      roster_id: input.roster_id,
+      project_id: input.project_id ?? "",
+      project_name: input.project_name ?? "",
+      task: input.task ?? "",
+      issue_date: input.issue_date ?? "",
+      no: input.no ?? "",
+      defect_id: (input.defect_id ?? "").trim(),
+      title: (input.title ?? "").trim(),
+      fr: input.fr ?? "",
+      fail_unit: input.fail_unit ?? "",
+      condition_text: input.condition_text ?? "",
+      steps_recover: input.steps_recover ?? "",
+      observed_symptom: input.observed_symptom ?? "",
+      dqa_owner: input.dqa_owner ?? "",
+      dqa_verify_data: input.dqa_verify_data ?? "",
+      dqa_comments: input.dqa_comments ?? "",
+      pm: input.pm ?? "",
+      rd_owner: input.rd_owner ?? "",
+      rd_comments: input.rd_comments ?? "",
+      conclusion: input.conclusion ?? "",
+      sort_order: input.sort_order ?? maxSort + 1,
+      created_by: me?.id ?? null,
+      updated_at: new Date().toISOString(),
+    };
+    const { data, error } = await sb()
+      .from("security_issue_tracking")
+      .insert(payload)
+      .select()
+      .single();
+    if (error) throw error;
+    return mapSecurityIssueTracking(data as Record<string, unknown>);
+  },
+
+  async updateSecurityIssueTracking(
+    id: string,
+    patch: Partial<SecurityIssueTrackingRow>,
+  ): Promise<SecurityIssueTrackingRow> {
+    const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    const keys = [
+      "task",
+      "issue_date",
+      "no",
+      "defect_id",
+      "title",
+      "fr",
+      "fail_unit",
+      "condition_text",
+      "steps_recover",
+      "observed_symptom",
+      "dqa_owner",
+      "dqa_verify_data",
+      "dqa_comments",
+      "pm",
+      "rd_owner",
+      "rd_comments",
+      "conclusion",
+      "sort_order",
+      "project_id",
+      "project_name",
+    ] as const;
+    for (const k of keys) {
+      if (patch[k] !== undefined) updates[k] = patch[k];
+    }
+    const { data, error } = await sb()
+      .from("security_issue_tracking")
+      .update(updates)
+      .eq("id", id)
+      .select()
+      .single();
+    if (error) throw error;
+    return mapSecurityIssueTracking(data as Record<string, unknown>);
+  },
+
+  async deleteSecurityIssueTracking(id: string): Promise<void> {
+    const { error } = await sb().from("security_issue_tracking").delete().eq("id", id);
     if (error) throw error;
   },
 

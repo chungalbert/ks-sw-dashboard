@@ -1,5 +1,6 @@
 import { FormEvent, MouseEvent as ReactMouseEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { CycleDetailPanel } from "../components/CycleDetailPanel";
+import { IssueTrackingModal } from "../components/IssueTrackingModal";
 import { LoadingIndicator } from "../components/LoadingIndicator";
 import { SavingIndicator } from "../components/SavingIndicator";
 import { useAuth } from "../context/AuthContext";
@@ -59,6 +60,8 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
   const { saveStatus, runSave } = useSaveStatus();
   const personnelRole = user ? normalizePersonnelRole(user) : "DE";
   const canManageStructure = canManageSecurityStructure(personnelRole);
+  /** Security page viewers (incl. DE/DQA/PM/SA) may edit Issue Tracking content. */
+  const canEditIssueTracking = Boolean(user);
 
   /** All Personnel members for Owner / Reviewer selects (sorted). */
   const personnelMembers = useMemo(() => {
@@ -81,6 +84,8 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
   const [issueModal, setIssueModal] = useState<null | { mode: "create" | "edit"; issue?: SecurityIssue }>(
     null,
   );
+  /** Per-project Issue Tracking spreadsheet (roster row after Status). */
+  const [issueTrackingRoster, setIssueTrackingRoster] = useState<SecurityRosterEntry | null>(null);
   /** When set, show cycle detail matrix (AIOSW security-update?cycle=…). */
   const [detailCycleId, setDetailCycleId] = useState<string | null>(null);
   const [detailDoc, setDetailDoc] = useState<CycleDetailDoc | null>(null);
@@ -466,6 +471,7 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
             }}
             onPatchRoster={patchRoster}
             onPatchRosterMany={patchRosterMany}
+            onOpenIssueTracking={setIssueTrackingRoster}
           />
         ) : (
           <IssueSummaryPanel
@@ -564,6 +570,18 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
           }
         />
       )}
+
+      {issueTrackingRoster && (
+        <IssueTrackingModal
+          roster={issueTrackingRoster}
+          cycleName={cycles.find((c) => c.id === issueTrackingRoster.cycle_id)?.name ?? ""}
+          canManageStructure={canManageStructure}
+          canEditContent={canEditIssueTracking}
+          busy={saveStatus.kind === "saving"}
+          runSave={runSave}
+          onClose={() => setIssueTrackingRoster(null)}
+        />
+      )}
     </div>
   );
 }
@@ -584,6 +602,7 @@ function OverviewPanel({
   onEditCycle,
   onPatchRoster,
   onPatchRosterMany,
+  onOpenIssueTracking,
 }: {
   cycles: SecurityCycle[];
   allCycles: SecurityCycle[];
@@ -600,6 +619,7 @@ function OverviewPanel({
   onEditCycle: () => void;
   onPatchRoster: (id: string, patch: SecurityRosterPatch) => void;
   onPatchRosterMany: (ids: string[], patch: SecurityRosterPatch) => Promise<void>;
+  onOpenIssueTracking: (row: SecurityRosterEntry) => void;
 }) {
   const [batchModal, setBatchModal] = useState<null | "wave" | "reviewer">(null);
 
@@ -758,12 +778,13 @@ function OverviewPanel({
                 <th>PM Owner</th>
                 <th>DQA Owner</th>
                 <th>Status</th>
+                <th>Issue Tracking</th>
               </tr>
             </thead>
             <tbody>
               {roster.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="sec-roster-empty">
+                  <td colSpan={10} className="sec-roster-empty">
                     0 entries
                   </td>
                 </tr>
@@ -856,6 +877,16 @@ function OverviewPanel({
                         />
                         <span className="sec-status-derived-label">{row.status}</span>
                       </span>
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="sec-issue-tracking-btn"
+                        onClick={() => onOpenIssueTracking(row)}
+                        title={`Issue Tracking for ${row.project_name}`}
+                      >
+                        Issue Tracking
+                      </button>
                     </td>
                   </tr>
                   );

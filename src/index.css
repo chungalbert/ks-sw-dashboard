@@ -5869,6 +5869,192 @@ button.sec-th-affordance:disabled {
   place-items: center;
   flex-shrink: 0;
 }
+.sec-issue-tracking-btn {
+  border: 1px solid #3b82f6;
+  background: #1e3a5f;
+  color: #bfdbfe;
+  border-radius: 8px;
+  padding: 0.35rem 0.65rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.sec-issue-tracking-btn:hover {
+  background: #2563eb;
+  color: #fff;
+  border-color: #2563eb;
+}
+.sec-it-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: rgba(0, 0, 0, 0.6);
+  display: grid;
+  place-items: center;
+  padding: 16px;
+}
+.sec-it-modal {
+  width: min(1240px, 100%);
+  max-height: min(92vh, 900px);
+  display: flex;
+  flex-direction: column;
+  background: #303134;
+  border: 1px solid #3c4043;
+  border-radius: 12px;
+  overflow: hidden;
+}
+.sec-it-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid #3c4043;
+}
+.sec-it-head h2 {
+  margin: 0;
+  font-size: 1.1rem;
+  color: #f1f3f4;
+}
+.sec-it-sub {
+  margin: 0.25rem 0 0;
+  font-size: 0.8rem;
+  color: #9aa0a6;
+}
+.sec-it-head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+}
+.sec-it-btn {
+  border: 1px solid #5f6368;
+  background: #3c4043;
+  color: #e8eaed;
+  border-radius: 8px;
+  padding: 0.4rem 0.7rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.sec-it-btn:hover:not(:disabled) { background: #4a4d51; }
+.sec-it-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.sec-it-btn-primary {
+  background: #2563eb;
+  border-color: #2563eb;
+}
+.sec-it-btn-primary:hover:not(:disabled) { background: #1d4ed8; }
+.sec-it-close {
+  border: none;
+  background: transparent;
+  color: #9aa0a6;
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}
+.sec-it-close:hover { color: #fff; }
+.sec-it-file {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+}
+.sec-it-error {
+  margin: 0;
+  padding: 8px 16px;
+  color: #fecaca;
+  font-size: 0.85rem;
+  background: #3f1d1d;
+}
+.sec-it-import-result {
+  margin: 0;
+  padding: 10px 16px;
+  border-bottom: 1px solid #3c4043;
+  background: #1f2937;
+  color: #e5e7eb;
+  font-size: 0.85rem;
+}
+.sec-it-import-result ul {
+  margin: 0.4rem 0 0.6rem;
+  padding-left: 1.1rem;
+  max-height: 6rem;
+  overflow: auto;
+  color: #fecaca;
+}
+.sec-it-err-count { color: #f87171; }
+.sec-it-table-wrap {
+  flex: 1;
+  overflow: auto;
+  padding: 0 0 12px;
+}
+.sec-it-muted,
+.sec-it-empty {
+  padding: 24px 16px;
+  color: #9aa0a6;
+  text-align: center;
+}
+.sec-it-table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  font-size: 0.75rem;
+}
+.sec-it-table th,
+.sec-it-table td {
+  border: 1px solid #3c4043;
+  padding: 4px;
+  vertical-align: top;
+  min-width: 110px;
+}
+.sec-it-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  font-weight: 700;
+  color: #1f2937;
+  white-space: nowrap;
+}
+.sec-it-table th.is-dqa { background: #bdd7ee; }
+.sec-it-table th.is-rd { background: #f4b183; }
+.sec-it-table td.is-rd { background: rgba(244, 177, 131, 0.08); }
+.sec-it-cell {
+  width: 100%;
+  min-width: 100px;
+  box-sizing: border-box;
+  border: 1px solid transparent;
+  background: #1a1b1e;
+  color: #e8eaed;
+  border-radius: 4px;
+  padding: 4px 6px;
+  font: inherit;
+  resize: vertical;
+}
+.sec-it-cell:focus {
+  outline: none;
+  border-color: #3b82f6;
+  background: #111827;
+}
+.sec-it-readonly {
+  display: block;
+  white-space: pre-wrap;
+  color: #d1d5db;
+  padding: 4px;
+}
+.sec-it-del {
+  border: 1px solid #7f1d1d;
+  background: transparent;
+  color: #fca5a5;
+  border-radius: 6px;
+  padding: 0.25rem 0.45rem;
+  font-size: 0.7rem;
+  cursor: pointer;
+}
+.sec-it-del:hover:not(:disabled) { background: #7f1d1d; color: #fff; }
+.sec-it-actions-col { min-width: 64px !important; background: #3c4043 !important; color: #e8eaed !important; }
 .sec-issues {
   background: var(--sec-panel);
   border: 1px solid var(--sec-line);
