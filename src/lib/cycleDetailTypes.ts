@@ -566,13 +566,15 @@ export function isReleaseTestComplete(value: string | undefined | null): boolean
  * Milestone fields (UI labels): Internal Release, SA BVT Test, DQA Test Complete, Sign off.
  *
  * Row Status is exclusive (one label per project). Overview chips use independent
- * milestone counts via `cycleMetrics` and may overlap.
+ * milestone counts via `cycleMetrics` and may overlap:
+ * Internal / SA BVT / Issue Clarification (`Test Complete`) / Test Pass (`Done`) /
+ * Completed (DQA Done AND Sign off Done).
  *
  * Priority (highest first):
  * 1. DQA Test Complete = Done AND Sign off = Done → Completed
  * 2. DQA Test Complete = Test Complete → Issue Clarification
  * 3. DQA Test Complete = Done (Sign off not Done) → Issue Clarification
- *    (row-only intermediate; chips count IC only for `Test Complete`)
+ *    (row-only intermediate; chips count IC for `Test Complete`, Test Pass for `Done`)
  * 4. Internal Release + SA BVT Test Done → SA BVT
  * 5. Internal Release Done → Internal release
  * 6. Else → Not Started
