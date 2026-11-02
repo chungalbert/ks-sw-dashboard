@@ -157,6 +157,11 @@ export function canManageProjectsIssues(role: PersonnelRole): boolean {
   return role === "Admin" || role === "DL";
 }
 
+/** Excel sample + bulk upload on Projects & Issues (Admin / DM / DL). */
+export function canBulkCreateProjects(role: PersonnelRole): boolean {
+  return role === "Admin" || role === "DM" || role === "DL";
+}
+
 /** CheckPoint open/edit/save/add/delete — Admin / DL / DE (not full Projects edit mode). */
 export function canEditProjectCheckpoints(role: PersonnelRole): boolean {
   return role === "Admin" || role === "DL" || role === "DE";

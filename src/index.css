@@ -2069,6 +2069,93 @@ th { color: var(--muted); font-weight: 500; font-size: 12px; }
 
 .pi-add-col:hover { background: #35363a; }
 
+.pi-bulk-file {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+
+.pi-bulk-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: rgba(0, 0, 0, 0.55);
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.pi-bulk-modal {
+  width: min(520px, 100%);
+  max-height: min(80vh, 640px);
+  overflow: auto;
+  background: #303134;
+  border: 1px solid #3c4043;
+  border-radius: 12px;
+}
+
+.pi-bulk-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid #3c4043;
+}
+
+.pi-bulk-head h2 {
+  margin: 0;
+  font-size: 1rem;
+  color: #f1f3f4;
+}
+
+.pi-bulk-close {
+  border: none;
+  background: transparent;
+  color: #9aa0a6;
+  font-size: 1.4rem;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.pi-bulk-close:hover { color: #fff; }
+
+.pi-bulk-body {
+  padding: 14px 16px;
+  color: #c8c9cc;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.pi-bulk-err { color: #f87171; }
+
+.pi-bulk-list {
+  margin: 0.6rem 0 0;
+  padding: 0.5rem 0.75rem;
+  list-style: none;
+  max-height: 10rem;
+  overflow: auto;
+  border-radius: 8px;
+  background: #1a1b1e;
+  border: 1px solid #2e2f33;
+  font-size: 0.82rem;
+  color: #e5e7eb;
+}
+
+.pi-bulk-list li + li { margin-top: 0.35rem; }
+
+.pi-bulk-list.is-errors { color: #fecaca; }
+
+.pi-bulk-foot {
+  display: flex;
+  justify-content: flex-end;
+  padding: 12px 16px 16px;
+}
+
 .pi-edit-toolbar-btn {
   height: 30px;
   padding: 0 12px;
