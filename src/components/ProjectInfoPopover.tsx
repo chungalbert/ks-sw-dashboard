@@ -3,6 +3,8 @@ import { createPortal } from "react-dom";
 
 export type ProjectInfoData = {
   name: string;
+  /** Lenovo Project Name (from projects.lenovo_name). */
+  lenovo_name?: string;
   platform: string;
   mpEop: string;
   segment: string;
@@ -136,6 +138,11 @@ export function ProjectInfoPopover({
     >
       <div className="sec-proj-info-title">
         <strong>{data.name}</strong>
+        {data.lenovo_name?.trim() ? (
+          <span className="sec-proj-info-lenovo" title="Lenovo Project Name">
+            {data.lenovo_name.trim()}
+          </span>
+        ) : null}
         {data.platform ? <span className="sec-proj-info-platform">{data.platform}</span> : null}
       </div>
       <dl className="sec-proj-info-rows">

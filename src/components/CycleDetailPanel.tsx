@@ -167,6 +167,7 @@ export function CycleDetailPanel({
         blurb: waveBlurb || platform || (linked?.description ?? "").trim().slice(0, 48),
         info: {
           name: r.project_name,
+          lenovo_name: (linked?.lenovo_name ?? "").trim(),
           platform: platform || (linked?.description ?? "").trim().slice(0, 48),
           mpEop: formatMpEop(linked?.ss_date, linked?.eol_date),
           segment: linked ? resolveSegment(linked) : "—",
