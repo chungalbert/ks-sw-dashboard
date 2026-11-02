@@ -5,6 +5,7 @@ import type {
   CycleReleaseTracking,
   ItemApplyCell,
   ItemApplyStatus,
+  ProjectReleaseCell,
   ReleaseTrackingKey,
 } from "../lib/cycleDetailTypes";
 import {
@@ -13,14 +14,19 @@ import {
   RELEASE_TRACKING_ROWS,
   detailDocSignature,
   emptyApplyCell,
+  emptyCycleDetail,
+  ensureDetailTimestamps,
   isCycleDetailConflictError,
+  mergeCycleDetailDocs,
   newDetailItemId,
   normalizeApplyCell,
   normalizeEcrHref,
+  normalizeProjectReleaseCell,
+  nowStamp,
 } from "../lib/cycleDetailTypes";
 import type { SecurityCycle, SecurityIssue, SecurityRosterEntry } from "../lib/securityTypes";
 import { issueAllowedInCycle } from "../lib/securityTypes";
-import { securityStore, seedDetailFromIssues } from "../lib/securityStore";
+import { seedDetailFromIssues } from "../lib/securityStore";
 import { projectSortOrderValue } from "../lib/projects";
 import type { Project } from "../lib/types";
 import {
@@ -43,16 +49,27 @@ function cloneItems(items: CycleDetailItem[]): CycleDetailItem[] {
   return items.map((it) => ({
     ...it,
     ...(it.issue_id ? { issue_id: it.issue_id } : {}),
+    ...(it.field_updated_at ? { field_updated_at: { ...it.field_updated_at } } : {}),
     applies: Object.fromEntries(
       Object.entries(it.applies).map(([pid, cell]) => [pid, { ...normalizeApplyCell(cell) }]),
     ),
   }));
 }
 
+function cloneReleaseCell(cell: ProjectReleaseCell): ProjectReleaseCell {
+  const normalized = normalizeProjectReleaseCell(cell);
+  return {
+    ...normalized,
+    ...(normalized.field_updated_at
+      ? { field_updated_at: { ...normalized.field_updated_at } }
+      : {}),
+  };
+}
+
 function cloneRelease(release: CycleReleaseTracking): CycleReleaseTracking {
   return {
     by_project: Object.fromEntries(
-      Object.entries(release.by_project).map(([pid, cell]) => [pid, { ...cell }]),
+      Object.entries(release.by_project).map(([pid, cell]) => [pid, cloneReleaseCell(cell)]),
     ),
   };
 }
@@ -263,14 +280,24 @@ export function CycleDetailPanel({
   const dirty = detailDocSignature(draft) !== baseline;
 
   const updateItem = useCallback((id: string, patch: Partial<CycleDetailItem>) => {
+    const stamped = nowStamp();
     setDraft((prev) => ({
       ...prev,
-      items: prev.items.map((it) => (it.id === id ? { ...it, ...patch } : it)),
+      items: prev.items.map((it) => {
+        if (it.id !== id) return it;
+        const field_updated_at = { ...(it.field_updated_at ?? {}) };
+        if (patch.title !== undefined) field_updated_at.title = stamped;
+        if (patch.detail !== undefined) field_updated_at.detail = stamped;
+        if (patch.cycle_comment !== undefined) field_updated_at.cycle_comment = stamped;
+        if (patch.sort_order !== undefined) field_updated_at.sort_order = stamped;
+        return { ...it, ...patch, field_updated_at };
+      }),
     }));
   }, []);
 
   const patchApplyCell = useCallback(
     (itemId: string, projectId: string, patch: Partial<ItemApplyCell>) => {
+      const stamped = nowStamp();
       setDraft((prev) => ({
         ...prev,
         items: prev.items.map((it) => {
@@ -278,7 +305,10 @@ export function CycleDetailPanel({
           const cur = normalizeApplyCell(it.applies[projectId] ?? emptyApplyCell());
           return {
             ...it,
-            applies: { ...it.applies, [projectId]: { ...cur, ...patch } },
+            applies: {
+              ...it.applies,
+              [projectId]: { ...cur, ...patch, updated_at: stamped },
+            },
           };
         }),
       }));
@@ -303,11 +333,13 @@ export function CycleDetailPanel({
     const already = prev.items.some((it) => it.issue_id === issue.id);
     let nextDoc = prev;
     if (!already) {
+      const stamped = nowStamp();
       const applies: Record<string, ItemApplyCell> = {};
       for (const pid of projectIds) {
         applies[pid] = {
           status: affectedProjectIds.includes(pid) ? "Applied" : "",
           comment: "",
+          updated_at: stamped,
         };
       }
       const detailLine =
@@ -324,6 +356,12 @@ export function CycleDetailPanel({
         cycle_comment: "",
         applies,
         sort_order: prev.items.length,
+        field_updated_at: {
+          title: stamped,
+          detail: stamped,
+          cycle_comment: stamped,
+          sort_order: stamped,
+        },
       };
       nextDoc = { ...prev, items: [...prev.items, item] };
     }
@@ -337,8 +375,7 @@ export function CycleDetailPanel({
         setBaseline(detailDocSignature(nextDoc));
       } catch (err) {
         if (isCycleDetailConflictError(err)) {
-          const ok = await resolveConflictAndSave(nextDoc);
-          if (!ok) throw err;
+          await resolveConflictAndSave(nextDoc, err.current);
           return;
         }
         throw err;
@@ -354,8 +391,14 @@ export function CycleDetailPanel({
   };
 
   const setReleaseCell = (projectId: string, key: ReleaseTrackingKey, value: string) => {
+    const stamped = nowStamp();
     setDraft((prev) => {
-      const cell = { ...(prev.release.by_project[projectId] ?? {}), [key]: value };
+      const prevCell = normalizeProjectReleaseCell(prev.release.by_project[projectId] ?? {});
+      const cell: ProjectReleaseCell = {
+        ...prevCell,
+        [key]: value,
+        field_updated_at: { ...(prevCell.field_updated_at ?? {}), [key]: stamped },
+      };
       return {
         ...prev,
         release: {
@@ -366,8 +409,14 @@ export function CycleDetailPanel({
   };
 
   const setEcrUrl = (projectId: string, url: string) => {
+    const stamped = nowStamp();
     setDraft((prev) => {
-      const cell = { ...(prev.release.by_project[projectId] ?? {}), ecr_url: url };
+      const prevCell = normalizeProjectReleaseCell(prev.release.by_project[projectId] ?? {});
+      const cell: ProjectReleaseCell = {
+        ...prevCell,
+        ecr_url: url,
+        field_updated_at: { ...(prevCell.field_updated_at ?? {}), ecr_url: stamped },
+      };
       return {
         ...prev,
         release: {
@@ -377,31 +426,31 @@ export function CycleDetailPanel({
     });
   };
 
-  const resolveConflictAndSave = async (doc: CycleDetailDoc): Promise<boolean> => {
-    const overwrite = window.confirm(
-      "Someone else saved this cycle since you opened it.\n\n" +
-        "OK = overwrite their Save All with your draft\n" +
-        "Cancel = discard your draft and load their version",
+  /**
+   * On doc-level conflict: three-way 細格子 merge (baseline / local / remote)
+   * per matrix cell + per release field, then force-save the merged doc.
+   */
+  const resolveConflictAndSave = async (
+    localDoc: CycleDetailDoc,
+    remoteDoc: CycleDetailDoc,
+  ): Promise<CycleDetailDoc> => {
+    const baselineDoc = ensureDetailTimestamps(
+      saved && saved.cycle_id === localDoc.cycle_id
+        ? cloneDoc(saved)
+        : emptyCycleDetail(localDoc.cycle_id),
     );
-    if (overwrite) {
-      await onSave(doc, { force: true });
-      setBaseline(detailDocSignature(doc));
-      setEcrEditing(new Set());
-      setError("");
-      return true;
-    }
-    const latest = await securityStore.loadCycleDetail(doc.cycle_id);
-    if (latest) {
-      const cloned = cloneDoc(latest);
-      setDraft(cloned);
-      setBaseline(detailDocSignature(cloned));
-      setEcrEditing(new Set());
-      onAdoptSaved?.(cloned);
-      setError("Loaded the newer saved version. Your draft was discarded.");
-    } else {
-      setError("Could not load the newer version. Try Back and reopen the cycle.");
-    }
-    return false;
+    const merged = mergeCycleDetailDocs({
+      baseline: baselineDoc,
+      local: ensureDetailTimestamps(cloneDoc(localDoc)),
+      remote: ensureDetailTimestamps(cloneDoc(remoteDoc)),
+    });
+    await onSave(merged, { force: true });
+    setDraft(merged);
+    setBaseline(detailDocSignature(merged));
+    setEcrEditing(new Set());
+    onAdoptSaved?.(merged);
+    setError("Merged by 細格子 (kept newer cells/fields from both saves).");
+    return merged;
   };
 
   const handleSave = async () => {
@@ -413,7 +462,7 @@ export function CycleDetailPanel({
     } catch (err) {
       if (isCycleDetailConflictError(err)) {
         try {
-          await resolveConflictAndSave(draft);
+          await resolveConflictAndSave(draft, err.current);
         } catch (retryErr) {
           setError(retryErr instanceof Error ? retryErr.message : String(retryErr));
         }
