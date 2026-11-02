@@ -417,7 +417,7 @@ export const localApi = {
     const store = load();
     const me = store.sessionUserId;
     const user = store.profiles.find((p) => p.id === me);
-    // Admin/DL (full PI) and DE (CheckPoint on all projects) see every project.
+    // Admin/DM/DL (full PI) and DE (CheckPoint on all projects) see every project.
     if (user && canEditProjectCheckpoints(normalizePersonnelRole(user))) return store.projects;
     const ids = new Set(store.members.filter((m) => m.user_id === me).map((m) => m.project_id));
     return store.projects.filter((p) => ids.has(p.id));

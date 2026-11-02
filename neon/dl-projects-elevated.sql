@@ -1,7 +1,8 @@
--- DL has the same Projects & Issues privileges as Admin (see all projects,
+-- Admin / DM / DL have the same Projects & Issues privileges (see all projects,
 -- edit fields/columns/CheckPoints, create/delete). Personnel Add Member /
 -- ACTIONS stay Admin-only via profiles.is_admin / is_admin().
 -- Apply on Neon, then refresh Data API schema cache if policies appear stale.
+-- Incremental DM elevation: also see neon/dm-projects-elevated.sql.
 
 CREATE OR REPLACE FUNCTION public.is_projects_elevated()
 RETURNS boolean
@@ -12,7 +13,7 @@ SET search_path TO 'public'
 AS $$
   select coalesce((
     select p.is_admin
-      or coalesce(p.personnel_role, '') in ('Admin', 'DL')
+      or coalesce(p.personnel_role, '') in ('Admin', 'DM', 'DL')
     from public.profiles p
     where p.id = auth.user_id()
   ), false);
@@ -44,12 +45,12 @@ AS $$
   );
 $$;
 
--- projects_delete was Admin-only; allow elevated (Admin/DL) too.
+-- projects_delete was Admin-only; allow elevated (Admin/DM/DL) too.
 DROP POLICY IF EXISTS projects_delete ON public.projects;
 CREATE POLICY projects_delete ON public.projects
   FOR DELETE USING (public.is_projects_elevated());
 
--- project_columns write paths: Admin + DL (Projects & Issues edit mode).
+-- project_columns write paths: Admin + DM + DL (Projects & Issues edit mode).
 DROP POLICY IF EXISTS project_columns_insert ON public.project_columns;
 CREATE POLICY project_columns_insert ON public.project_columns
   FOR INSERT WITH CHECK (public.is_projects_elevated());
