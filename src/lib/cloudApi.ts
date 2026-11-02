@@ -84,6 +84,7 @@ function asJsonStringArray(value: unknown): string[] {
 }
 
 function normalizeSecurityStatus(raw: string | undefined): SecurityRosterStatus {
+  if (raw === "Completed with Issues") return "Issue Clarification";
   if (raw && (SECURITY_STATUSES as string[]).includes(raw)) return raw as SecurityRosterStatus;
   return "Not Started";
 }

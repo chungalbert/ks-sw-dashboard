@@ -542,20 +542,20 @@ export function isReleaseDone(value: string | undefined | null): boolean {
  * Milestone flags (UI labels): Internal Release, SA BVT Test, DQA Test Complete, Sign off.
  * Priority (highest first):
  * 1. Internal + SA BVT + DQA Test Complete + Sign off → Completed
- * 2. Internal + SA BVT + DQA Test Complete (no Sign off) → Completed with Issues
+ * 2. Internal + SA BVT + DQA Test Complete (no Sign off) → Issue Clarification
  * 3. Internal + SA BVT (no DQA / Sign off) → SA BVT
  * 4. Internal only → Internal release
  * 5. Else → Not Started
  */
 export function deriveRosterStatusFromRelease(
   cell: ProjectReleaseCell | undefined | null,
-): "Not Started" | "Internal release" | "SA BVT" | "Completed with Issues" | "Completed" {
+): "Not Started" | "Internal release" | "SA BVT" | "Issue Clarification" | "Completed" {
   const ir = isReleaseDone(cell?.internal_release);
   const sa = isReleaseDone(cell?.sa_bvt_test);
   const dqa = isReleaseDone(cell?.external_release_web);
   const signOff = isReleaseDone(cell?.external_release_wu);
   if (ir && sa && dqa && signOff) return "Completed";
-  if (ir && sa && dqa) return "Completed with Issues";
+  if (ir && sa && dqa) return "Issue Clarification";
   if (ir && sa) return "SA BVT";
   if (ir) return "Internal release";
   return "Not Started";
