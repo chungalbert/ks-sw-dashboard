@@ -7454,8 +7454,9 @@ input.sec-detail-date-input[type="date"]:invalid::-webkit-datetime-edit-day-fiel
   border-color: var(--sec-link);
 }
 .sec-release-select.is-ongoing { color: var(--warn); }
+.sec-release-select.is-test-complete { color: var(--warn); }
 .sec-release-select.is-done { color: var(--ok); }
-.sec-release-select:not(.is-ongoing):not(.is-done) {
+.sec-release-select:not(.is-ongoing):not(.is-test-complete):not(.is-done) {
   color: var(--sec-muted);
   font-weight: 500;
 }
