@@ -760,6 +760,12 @@ function OverviewPanel({
         <div className="sec-cycle-metrics" aria-label="Cycle metrics">
           <Metric label="Internal release" value={metrics.internal} total={metrics.total} tone="warn" />
           <Metric label="SA BVT" value={metrics.saBvt} total={metrics.total} tone="link" />
+          <Metric
+            label="Completed with Issues"
+            value={metrics.completedWithIssues}
+            total={metrics.total}
+            tone="warn"
+          />
           <Metric label="Completed" value={metrics.completed} total={metrics.total} tone="ok" />
         </div>
         {canManageStructure ? (
@@ -932,7 +938,7 @@ function OverviewPanel({
                     <td>
                       <span
                         className="sec-status-pill sec-status-derived"
-                        title="Derived from Project Release Tracking (Internal / SA BVT / External Web / WU → Done)"
+                        title="Derived from Project Release Tracking (Internal / SA BVT / DQA Test Complete / Sign off → Done)"
                       >
                         <span
                           className={`sec-dot${

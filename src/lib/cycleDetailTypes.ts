@@ -43,9 +43,10 @@ export const RELEASE_TRACKING_ROWS = [
   { key: "ecr_number", label: "ECR Number", kind: "ecr" },
   { key: "internal_release", label: "Internal Release", kind: "status" },
   { key: "sa_bvt_test", label: "SA BVT Test", kind: "status" },
-  /** Renamed from External Release - JY */
-  { key: "external_release_web", label: "External Release - Web", kind: "status" },
-  { key: "external_release_wu", label: "External Release - WU", kind: "status" },
+  /** Renamed from External Release - Web (key kept for Neon/local persistence). */
+  { key: "external_release_web", label: "DQA Test Complete", kind: "status" },
+  /** Renamed from External Release - WU (key kept for Neon/local persistence). */
+  { key: "external_release_wu", label: "Sign off", kind: "status" },
 ] as const;
 
 export type ReleaseTrackingKey = (typeof RELEASE_TRACKING_ROWS)[number]["key"];
@@ -538,20 +539,23 @@ export function isReleaseDone(value: string | undefined | null): boolean {
 
 /**
  * Derive Project roster Status from Project Release Tracking for one project.
+ * Milestone flags (UI labels): Internal Release, SA BVT Test, DQA Test Complete, Sign off.
  * Priority (highest first):
- * 1. Internal + SA BVT + External Web + External WU all Done → Completed
- * 2. Internal + SA BVT Done → SA BVT
- * 3. Internal Done → Internal release
- * 4. Else → Not Started
+ * 1. Internal + SA BVT + DQA Test Complete + Sign off → Completed
+ * 2. Internal + SA BVT + DQA Test Complete (no Sign off) → Completed with Issues
+ * 3. Internal + SA BVT (no DQA / Sign off) → SA BVT
+ * 4. Internal only → Internal release
+ * 5. Else → Not Started
  */
 export function deriveRosterStatusFromRelease(
   cell: ProjectReleaseCell | undefined | null,
-): "Not Started" | "Internal release" | "SA BVT" | "Completed" {
+): "Not Started" | "Internal release" | "SA BVT" | "Completed with Issues" | "Completed" {
   const ir = isReleaseDone(cell?.internal_release);
   const sa = isReleaseDone(cell?.sa_bvt_test);
-  const web = isReleaseDone(cell?.external_release_web);
-  const wu = isReleaseDone(cell?.external_release_wu);
-  if (ir && sa && web && wu) return "Completed";
+  const dqa = isReleaseDone(cell?.external_release_web);
+  const signOff = isReleaseDone(cell?.external_release_wu);
+  if (ir && sa && dqa && signOff) return "Completed";
+  if (ir && sa && dqa) return "Completed with Issues";
   if (ir && sa) return "SA BVT";
   if (ir) return "Internal release";
   return "Not Started";

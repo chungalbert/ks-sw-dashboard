@@ -501,6 +501,7 @@ export function cycleMetrics(roster: SecurityRosterEntry[], definedWaveCount?: n
         : new Set(roster.map((r) => r.wave).filter((w) => w && w !== "Not set")).size,
     internal: count("Internal release"),
     saBvt: count("SA BVT"),
+    completedWithIssues: count("Completed with Issues"),
     completed: count("Completed"),
   };
 }

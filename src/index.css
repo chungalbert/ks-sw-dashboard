@@ -5824,7 +5824,7 @@ select.pi-state {
 }
 .sec-cycle-metrics {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
   border-left: 1px dashed var(--sec-line);
   padding-left: 18px;
