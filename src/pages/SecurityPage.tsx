@@ -664,7 +664,7 @@ function OverviewPanel({
     .join(" · ");
 
   return (
-    <>
+    <div className="sec-overview">
       <section className="sec-cycle-card" aria-label="Active cycle">
         <div className="sec-cycle-main">
           <p className="sec-cycle-label">Active cycle</p>
@@ -925,7 +925,7 @@ function OverviewPanel({
           }}
         />
       )}
-    </>
+    </div>
   );
 }
 
