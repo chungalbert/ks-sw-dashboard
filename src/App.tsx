@@ -191,7 +191,7 @@ function Shell() {
   const [pendingProjectOpen, setPendingProjectOpen] = useState<string | null>(null);
   const personnelRole = user ? normalizePersonnelRole(user) : "DE";
   const limitedWorkspace = isWorkspaceLimitedRole(personnelRole);
-  // DQA/PM/SA: only Security + INV&PCR. Admin/DM/DL/DE get full nav including Personnel.
+  // DQA/PM: Security + INV&PCR. SA: those plus Tool (OTP/WHEA). Admin/DM/DL/DE: full nav.
   const groups = NAV_GROUPS.map((group) => {
     let items = group.items;
     if (limitedWorkspace) {
