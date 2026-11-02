@@ -18,6 +18,10 @@ import {
   normalizeApplyCell,
 } from "./cycleDetailTypes";
 import type {
+  SecurityIssueTrackingInput,
+  SecurityIssueTrackingRow,
+} from "./securityIssueTracking";
+import type {
   NewCycleInput,
   SecurityCycle,
   SecurityIssue,
@@ -39,6 +43,7 @@ import { hasSupabaseConfig } from "./util";
 
 const KEY = "awb-security-v1";
 const DETAIL_KEY = "awb-security-detail-v1";
+const TRACKING_KEY = "awb-security-issue-tracking-v1";
 const CLOUD_PROBE_TTL_MS = 20_000;
 
 let cloudOk: boolean | null = null;
@@ -63,6 +68,7 @@ function isSecurityTableMissing(err: unknown): boolean {
     msg.includes("security_cycles") ||
     msg.includes("security_roster") ||
     msg.includes("security_issues") ||
+    msg.includes("security_issue_tracking") ||
     msg.includes("security_cycle_details");
   const missingRelation =
     code === "42P01" ||
@@ -88,6 +94,21 @@ function loadLocalDetails(): Record<string, CycleDetailDoc> {
 
 function saveLocalDetails(map: Record<string, CycleDetailDoc>) {
   localStorage.setItem(DETAIL_KEY, JSON.stringify(map));
+}
+
+function loadLocalTracking(): SecurityIssueTrackingRow[] {
+  try {
+    const raw = localStorage.getItem(TRACKING_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as SecurityIssueTrackingRow[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveLocalTracking(rows: SecurityIssueTrackingRow[]) {
+  localStorage.setItem(TRACKING_KEY, JSON.stringify(rows));
 }
 
 function normalizeDetailDoc(cycleId: string, raw: Partial<CycleDetailDoc> | null | undefined): CycleDetailDoc {
@@ -944,6 +965,99 @@ export const securityStore = {
     return Promise.all(
       patches.map((p) => securityStore.updateRosterEntry(p.id, { status: p.status })),
     );
+  },
+
+  async listIssueTracking(rosterId: string): Promise<SecurityIssueTrackingRow[]> {
+    if (await probeCloud()) {
+      try {
+        return await cloudApi.listSecurityIssueTracking(rosterId);
+      } catch (err) {
+        if (!isSecurityTableMissing(err)) throw err;
+        cloudOk = false;
+      }
+    }
+    return loadLocalTracking()
+      .filter((r) => r.roster_id === rosterId)
+      .sort((a, b) => a.sort_order - b.sort_order);
+  },
+
+  async createIssueTracking(input: SecurityIssueTrackingInput): Promise<SecurityIssueTrackingRow> {
+    if (await probeCloud()) {
+      try {
+        return await cloudApi.createSecurityIssueTracking(input);
+      } catch (err) {
+        if (!isSecurityTableMissing(err)) throw err;
+        cloudOk = false;
+      }
+    }
+    const all = loadLocalTracking();
+    const forRoster = all.filter((r) => r.roster_id === input.roster_id);
+    const maxSort = forRoster.reduce((m, r) => Math.max(m, r.sort_order), -1);
+    const now = new Date().toISOString();
+    const row: SecurityIssueTrackingRow = {
+      id: crypto.randomUUID(),
+      cycle_id: input.cycle_id,
+      roster_id: input.roster_id,
+      project_id: input.project_id ?? "",
+      project_name: input.project_name ?? "",
+      task: input.task ?? "",
+      issue_date: input.issue_date ?? "",
+      no: input.no ?? "",
+      defect_id: (input.defect_id ?? "").trim(),
+      title: (input.title ?? "").trim(),
+      fr: input.fr ?? "",
+      fail_unit: input.fail_unit ?? "",
+      condition_text: input.condition_text ?? "",
+      steps_recover: input.steps_recover ?? "",
+      observed_symptom: input.observed_symptom ?? "",
+      dqa_owner: input.dqa_owner ?? "",
+      dqa_verify_data: input.dqa_verify_data ?? "",
+      dqa_comments: input.dqa_comments ?? "",
+      pm: input.pm ?? "",
+      rd_owner: input.rd_owner ?? "",
+      rd_comments: input.rd_comments ?? "",
+      conclusion: input.conclusion ?? "",
+      sort_order: input.sort_order ?? maxSort + 1,
+      created_at: now,
+      updated_at: now,
+    };
+    all.push(row);
+    saveLocalTracking(all);
+    return row;
+  },
+
+  async updateIssueTracking(
+    id: string,
+    patch: Partial<SecurityIssueTrackingRow>,
+  ): Promise<SecurityIssueTrackingRow> {
+    if (await probeCloud()) {
+      try {
+        return await cloudApi.updateSecurityIssueTracking(id, patch);
+      } catch (err) {
+        if (!isSecurityTableMissing(err)) throw err;
+        cloudOk = false;
+      }
+    }
+    const all = loadLocalTracking();
+    const idx = all.findIndex((r) => r.id === id);
+    if (idx < 0) throw new Error("Issue tracking row not found");
+    const next = { ...all[idx], ...patch, updated_at: new Date().toISOString() };
+    all[idx] = next;
+    saveLocalTracking(all);
+    return next;
+  },
+
+  async deleteIssueTracking(id: string): Promise<void> {
+    if (await probeCloud()) {
+      try {
+        await cloudApi.deleteSecurityIssueTracking(id);
+        return;
+      } catch (err) {
+        if (!isSecurityTableMissing(err)) throw err;
+        cloudOk = false;
+      }
+    }
+    saveLocalTracking(loadLocalTracking().filter((r) => r.id !== id));
   },
 
   /** Exported for cloudApi row mapping. */
