@@ -2,6 +2,13 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { SavingIndicator } from "../components/SavingIndicator";
 import { api } from "../lib/api";
 import {
+  buildPersonnelBulkTemplate,
+  loadPersonnelBulkWorkbook,
+  parsePersonnelBulkWorkbook,
+  type PersonnelBulkCreateResult,
+  type PersonnelBulkRowError,
+} from "../lib/personnelBulk";
+import {
   isTaskOpen,
   normalizePersonnelRole,
   normalizeTaskStatus,
@@ -18,6 +25,18 @@ import { useAuth } from "../context/AuthContext";
 import { useStore } from "../context/StoreContext";
 import { useSaveStatus } from "../lib/useSaveStatus";
 import { DEFAULT_PASSWORD } from "../lib/util";
+
+function downloadBuffer(name: string, buffer: ArrayBuffer) {
+  const blob = new Blob([buffer], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = name;
+  link.click();
+  URL.revokeObjectURL(url);
+}
 
 function sameProjectIds(a: string[], b: string[]): boolean {
   if (a.length !== b.length) return false;
@@ -67,6 +86,9 @@ export function PeoplePage({
   const [newColLabel, setNewColLabel] = useState("");
   const [memberOpen, setMemberOpen] = useState(false);
   const [memberBusy, setMemberBusy] = useState(false);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkResult, setBulkResult] = useState<PersonnelBulkCreateResult | null>(null);
+  const bulkFileRef = useRef<HTMLInputElement>(null);
   const { saveStatus, runSave } = useSaveStatus();
   const [memberForm, setMemberForm] = useState({
     display_name: "",
@@ -91,6 +113,8 @@ export function PeoplePage({
     if (!isAdmin) {
       setMemberOpen(false);
       setMemberBusy(false);
+      setBulkBusy(false);
+      setBulkResult(null);
       setAddOpen(false);
     }
   }, [isAdmin]);
@@ -220,6 +244,96 @@ export function PeoplePage({
     }
   };
 
+  const onDownloadBulkSample = async () => {
+    if (!isAdmin) return;
+    setError("");
+    try {
+      const buffer = await buildPersonnelBulkTemplate();
+      downloadBuffer("kssw-personnel-bulk-sample.xlsx", buffer);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Download sample failed");
+    }
+  };
+
+  const onBulkExcelSelected = async (file: File | null) => {
+    if (!isAdmin) return;
+    if (bulkFileRef.current) bulkFileRef.current.value = "";
+    if (!file) return;
+    if (!/\.xlsx?$/i.test(file.name)) {
+      setError("Please upload an Excel file (.xlsx)");
+      return;
+    }
+    setError("");
+    setBulkBusy(true);
+    setBulkResult(null);
+    try {
+      const buffer = await file.arrayBuffer();
+      const workbook = await loadPersonnelBulkWorkbook(buffer);
+      // Fresh profile list so duplicate checks are not stale vs concurrent adds.
+      const latestProfiles = await api.listProfiles();
+      const parsed = parsePersonnelBulkWorkbook(workbook, latestProfiles);
+      const created: PersonnelBulkCreateResult["created"] = [];
+      const errors: PersonnelBulkRowError[] = [...parsed.errors];
+
+      await runSave(async () => {
+        // Sequential creates: avoid Auth rate limits and accumulate known identities
+        // so later rows cannot overwrite earlier creates in the same file.
+        const known = [...latestProfiles];
+        for (const item of parsed.valid) {
+          try {
+            const uname = (item.input.username ?? "").toLowerCase();
+            const email = (item.input.email ?? "").toLowerCase();
+            // Guard: createAccounts soft-reuses existing email and syncPersonnelProfile
+            // could overwrite — never call create on a known username/email.
+            if (
+              known.some(
+                (p) =>
+                  (uname && p.username.toLowerCase() === uname) ||
+                  (email && p.email.toLowerCase() === email),
+              )
+            ) {
+              errors.push({
+                row: item.row,
+                display_name: item.input.display_name,
+                username: item.input.username,
+                email: item.input.email,
+                reason: "Username or email already exists — skipped (no overwrite)",
+              });
+              continue;
+            }
+            const profile = await api.createPersonnelMember(item.input);
+            known.push(profile);
+            created.push({
+              row: item.row,
+              username: profile.username,
+              email: profile.email,
+              role: normalizePersonnelRole(profile),
+            });
+          } catch (err) {
+            errors.push({
+              row: item.row,
+              display_name: item.input.display_name,
+              username: item.input.username,
+              email: item.input.email,
+              reason: err instanceof Error ? err.message : "Create failed",
+            });
+          }
+        }
+        await reload();
+      });
+
+      setBulkResult({
+        created,
+        errors: errors.sort((a, b) => a.row - b.row),
+        attempted: parsed.valid.length + parsed.errors.length,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Excel upload failed");
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
   const onRemoveColumn = async (columnId: string, label: string) => {
     if (!isAdmin) return;
     const ok = window.confirm(`Remove column “${label}”? Values will be deleted.`);
@@ -297,6 +411,36 @@ export function PeoplePage({
 
         <div className="personnel-toolbar-actions">
           <SavingIndicator status={saveStatus} />
+          {isAdmin && (
+            <>
+              <button
+                type="button"
+                className="personnel-add-col"
+                disabled={bulkBusy}
+                onClick={() => void onDownloadBulkSample()}
+                title="Download Excel sample for bulk create"
+              >
+                Excel sample
+              </button>
+              <button
+                type="button"
+                className="personnel-add-col"
+                disabled={bulkBusy}
+                onClick={() => bulkFileRef.current?.click()}
+                title="Upload Excel to create many members (Admin)"
+              >
+                {bulkBusy ? "Uploading…" : "Upload Excel"}
+              </button>
+              <input
+                ref={bulkFileRef}
+                type="file"
+                accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                className="personnel-bulk-file"
+                aria-label="Upload Personnel Excel"
+                onChange={(e) => void onBulkExcelSelected(e.target.files?.[0] ?? null)}
+              />
+            </>
+          )}
           {isAdmin && (
             <button
               type="button"
@@ -473,6 +617,83 @@ export function PeoplePage({
               </button>
             </footer>
           </form>
+        </div>
+      )}
+
+      {isAdmin && bulkResult && (
+        <div
+          className="personnel-modal-backdrop"
+          role="presentation"
+          onClick={() => setBulkResult(null)}
+        >
+          <div
+            className="personnel-modal personnel-bulk-result"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="personnel-bulk-result-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <header className="personnel-modal-head">
+              <h2 id="personnel-bulk-result-title">Excel bulk create</h2>
+              <button
+                type="button"
+                className="personnel-modal-close"
+                aria-label="Close"
+                onClick={() => setBulkResult(null)}
+              >
+                ×
+              </button>
+            </header>
+            <div className="personnel-modal-body">
+              <p className="personnel-bulk-summary">
+                Created <strong>{bulkResult.created.length}</strong>
+                {bulkResult.errors.length > 0 ? (
+                  <>
+                    {" "}
+                    · <strong className="personnel-bulk-err-count">{bulkResult.errors.length}</strong> row
+                    {bulkResult.errors.length === 1 ? "" : "s"} skipped / failed
+                  </>
+                ) : (
+                  <> · no row errors</>
+                )}
+                . Existing accounts were not overwritten.
+              </p>
+              {bulkResult.created.length > 0 && (
+                <div className="personnel-bulk-section">
+                  <h3>Created</h3>
+                  <ul className="personnel-bulk-list">
+                    {bulkResult.created.map((c) => (
+                      <li key={`ok-${c.row}`}>
+                        Row {c.row}: {c.username} ({c.role}) — {c.email}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {bulkResult.errors.length > 0 && (
+                <div className="personnel-bulk-section">
+                  <h3>Row errors</h3>
+                  <ul className="personnel-bulk-list is-errors">
+                    {bulkResult.errors.map((e, i) => (
+                      <li key={`err-${e.row}-${i}`}>
+                        Row {e.row}
+                        {e.display_name ? ` (${e.display_name})` : ""}: {e.reason}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+            <footer className="personnel-add-actions">
+              <button
+                type="button"
+                className="personnel-btn-primary"
+                onClick={() => setBulkResult(null)}
+              >
+                Close
+              </button>
+            </footer>
+          </div>
         </div>
       )}
 
