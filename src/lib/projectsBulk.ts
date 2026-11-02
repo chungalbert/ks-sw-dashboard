@@ -25,7 +25,7 @@ export type ProjectBulkHeader = (typeof PROJECT_BULK_HEADERS)[number];
 export const PROJECT_BULK_LABELS: Record<ProjectBulkHeader, string> = {
   name: "Compal Project Name",
   lenovo_name: "Lenovo Project Name",
-  bios_id: "BIOS ID",
+  bios_id: "MTCODE",
   platform: "PLATFORM",
   dis: "DIS",
   ss_date: "SS DATE",
@@ -48,6 +48,8 @@ const HEADER_ALIASES: Record<string, ProjectBulkHeader> = {
   bios_id: "bios_id",
   biosid: "bios_id",
   bios: "bios_id",
+  mtcode: "bios_id",
+  mt_code: "bios_id",
   platform: "platform",
   dis: "dis",
   ss_date: "ss_date",
@@ -164,7 +166,7 @@ export async function buildProjectsBulkTemplate(): Promise<ArrayBuffer> {
     "3. Duplicate names inside this file → later row(s) error.",
     "4. Blank Compal name or reserved name __kssw_meta__ → error.",
     "5. Partial success: valid rows create; failed rows listed.",
-    "6. After create, other columns are applied via update (Lenovo name, BIOS ID, dates, owners, …).",
+    "6. After create, other columns are applied via update (Lenovo name, MTCODE, dates, owners, …).",
     "7. Delete the sample row before upload unless that project name is free.",
   ];
   lines.forEach((text, i) => {
