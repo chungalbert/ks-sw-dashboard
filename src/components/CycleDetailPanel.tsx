@@ -427,8 +427,8 @@ export function CycleDetailPanel({
   };
 
   /**
-   * On doc-level conflict: three-way merge (baseline / local draft / remote)
-   * by per-cell and per-field `updated_at`, then force-save the merged doc.
+   * On doc-level conflict: three-way 細格子 merge (baseline / local / remote)
+   * per matrix cell + per release field, then force-save the merged doc.
    */
   const resolveConflictAndSave = async (
     localDoc: CycleDetailDoc,
@@ -449,7 +449,7 @@ export function CycleDetailPanel({
     setBaseline(detailDocSignature(merged));
     setEcrEditing(new Set());
     onAdoptSaved?.(merged);
-    setError("Merged with another user's newer Save All (kept newer cells/fields).");
+    setError("Merged by 細格子 (kept newer cells/fields from both saves).");
     return merged;
   };
 

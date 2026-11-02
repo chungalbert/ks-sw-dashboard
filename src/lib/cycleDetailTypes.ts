@@ -281,10 +281,11 @@ function releaseFieldValue(cell: ProjectReleaseCell | undefined, key: ReleaseFie
 }
 
 /**
- * Three-way merge for concurrent Save All.
+ * Three-way merge for concurrent Save All — **細格子 (per-cell / per-field)**, NOT whole item.
  * - Item add/delete resolved against `baseline` (doc when editor opened / last clean save).
- * - Scalar item fields, matrix apply cells, and release fields: if only one side changed
- *   vs baseline, take that side; if both changed, take the newer `updated_at` / field stamp.
+ * - Each matrix apply cell, each item scalar field, and each release-tracking field merges
+ *   independently: if only one side changed vs baseline, take that side; if both changed,
+ *   take the newer `updated_at` / field stamp (tie → prefer remote).
  * - Missing stamps treated as older than any real stamp (legacy rows lose to stamped edits).
  */
 export function mergeCycleDetailDocs(args: {
