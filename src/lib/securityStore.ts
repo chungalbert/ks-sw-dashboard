@@ -392,6 +392,7 @@ function saveLocal(snap: SecuritySnapshot) {
 }
 
 function normalizeStatus(raw: string | undefined): SecurityRosterStatus {
+  if (raw === "Completed with Issues") return "Issue Clarification";
   if (raw && (SECURITY_STATUSES as string[]).includes(raw)) return raw as SecurityRosterStatus;
   return "Not Started";
 }
@@ -501,7 +502,7 @@ export function cycleMetrics(roster: SecurityRosterEntry[], definedWaveCount?: n
         : new Set(roster.map((r) => r.wave).filter((w) => w && w !== "Not set")).size,
     internal: count("Internal release"),
     saBvt: count("SA BVT"),
-    completedWithIssues: count("Completed with Issues"),
+    issueClarification: count("Issue Clarification"),
     completed: count("Completed"),
   };
 }

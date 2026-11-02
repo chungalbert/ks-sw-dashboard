@@ -761,8 +761,8 @@ function OverviewPanel({
           <Metric label="Internal release" value={metrics.internal} total={metrics.total} tone="warn" />
           <Metric label="SA BVT" value={metrics.saBvt} total={metrics.total} tone="link" />
           <Metric
-            label="Completed with Issues"
-            value={metrics.completedWithIssues}
+            label="Issue Clarification"
+            value={metrics.issueClarification}
             total={metrics.total}
             tone="warn"
           />
