@@ -4,6 +4,7 @@ import {
   ISSUE_TRACKING_FIELDS,
   ISSUE_TRACKING_LABELS,
   ISSUE_TRACKING_RD_FIELDS,
+  ISSUE_TRACKING_STATUS_OPTIONS,
   loadIssueTrackingWorkbook,
   parseIssueTrackingWorkbook,
   type IssueTrackingBulkImportResult,
@@ -358,7 +359,13 @@ export function IssueTrackingPanel({
                 {ISSUE_TRACKING_FIELDS.map((field) => (
                   <th
                     key={field}
-                    className={ISSUE_TRACKING_RD_FIELDS.includes(field) ? "is-rd" : "is-dqa"}
+                    className={
+                      field === "status"
+                        ? "is-status"
+                        : ISSUE_TRACKING_RD_FIELDS.includes(field)
+                          ? "is-rd"
+                          : "is-dqa"
+                    }
                   >
                     {ISSUE_TRACKING_LABELS[field]}
                   </th>
@@ -383,26 +390,61 @@ export function IssueTrackingPanel({
                       const value = cellValue(row, field);
                       const cellKey = `${row.id}:${field}`;
                       const isSaving = savingCell === cellKey;
+                      const statusOptions = Array.from(
+                        new Set([...ISSUE_TRACKING_STATUS_OPTIONS, value].filter((v) => v !== undefined)),
+                      );
                       return (
                         <td
                           key={field}
-                          className={ISSUE_TRACKING_RD_FIELDS.includes(field) ? "is-rd" : undefined}
+                          className={
+                            field === "status"
+                              ? "is-status"
+                              : ISSUE_TRACKING_RD_FIELDS.includes(field)
+                                ? "is-rd"
+                                : undefined
+                          }
                         >
                           {canEditContent ? (
-                            <textarea
-                              className={`sec-it-cell${isSaving ? " is-saving" : ""}`}
-                              rows={LONG_FIELDS.has(field) ? 3 : 2}
-                              value={value}
-                              readOnly={false}
-                              aria-readonly={false}
-                              aria-label={`${ISSUE_TRACKING_LABELS[field]} for ${row.defect_id || row.no || "row"}`}
-                              onChange={(e) => setCellDraft(row.id, field, e.target.value)}
-                              onBlur={(e) => {
-                                void patchCell(row.id, field, e.target.value);
-                              }}
-                            />
+                            field === "status" ? (
+                              <select
+                                className={`sec-it-cell sec-it-status-select${isSaving ? " is-saving" : ""}${
+                                  value.toUpperCase() === "PASS" ? " is-pass" : ""
+                                }`}
+                                value={value}
+                                aria-label={`Status for ${row.defect_id || row.no || "row"}`}
+                                onChange={(e) => {
+                                  setCellDraft(row.id, field, e.target.value);
+                                  void patchCell(row.id, field, e.target.value);
+                                }}
+                              >
+                                {statusOptions.map((opt) => (
+                                  <option key={opt || "(blank)"} value={opt}>
+                                    {opt || "—"}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <textarea
+                                className={`sec-it-cell${isSaving ? " is-saving" : ""}`}
+                                rows={LONG_FIELDS.has(field) ? 3 : 2}
+                                value={value}
+                                readOnly={false}
+                                aria-readonly={false}
+                                aria-label={`${ISSUE_TRACKING_LABELS[field]} for ${row.defect_id || row.no || "row"}`}
+                                onChange={(e) => setCellDraft(row.id, field, e.target.value)}
+                                onBlur={(e) => {
+                                  void patchCell(row.id, field, e.target.value);
+                                }}
+                              />
+                            )
                           ) : (
-                            <span className="sec-it-readonly">{row[field] || "—"}</span>
+                            <span
+                              className={`sec-it-readonly${
+                                field === "status" && value.toUpperCase() === "PASS" ? " is-pass" : ""
+                              }`}
+                            >
+                              {row[field] || "—"}
+                            </span>
                           )}
                         </td>
                       );

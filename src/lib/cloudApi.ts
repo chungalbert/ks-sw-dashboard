@@ -97,6 +97,7 @@ function mapSecurityIssueTracking(row: Record<string, unknown>): SecurityIssueTr
     roster_id: String(row.roster_id),
     project_id: str("project_id"),
     project_name: str("project_name"),
+    status: str("status"),
     task: str("task"),
     issue_date: str("issue_date"),
     no: str("no"),
@@ -1935,6 +1936,7 @@ export const cloudApi = {
       roster_id: input.roster_id,
       project_id: input.project_id ?? "",
       project_name: input.project_name ?? "",
+      status: input.status ?? "",
       task: input.task ?? "",
       issue_date: input.issue_date ?? "",
       no: input.no ?? "",
@@ -1971,6 +1973,7 @@ export const cloudApi = {
   ): Promise<SecurityIssueTrackingRow> {
     const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
     const keys = [
+      "status",
       "task",
       "issue_date",
       "no",

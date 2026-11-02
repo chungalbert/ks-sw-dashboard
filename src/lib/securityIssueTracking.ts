@@ -1,7 +1,9 @@
 import ExcelJS from "exceljs";
 
-/** Spreadsheet columns matching the Compal Issue Tracking template. */
+/** Spreadsheet columns matching the Compal Issue Tracking template.
+ * Status is first (before Task) on per-project + 總表 UI. */
 export const ISSUE_TRACKING_FIELDS = [
+  "status",
   "task",
   "issue_date",
   "no",
@@ -25,6 +27,7 @@ export type IssueTrackingField = (typeof ISSUE_TRACKING_FIELDS)[number];
 
 /** Excel / UI header labels (order matches ISSUE_TRACKING_FIELDS). */
 export const ISSUE_TRACKING_LABELS: Record<IssueTrackingField, string> = {
+  status: "Status",
   task: "Task",
   issue_date: "Date",
   no: "No",
@@ -44,6 +47,9 @@ export const ISSUE_TRACKING_LABELS: Record<IssueTrackingField, string> = {
   conclusion: "Conclusion",
 };
 
+/** Common Status values (Cover/report PASS → PASS; else blank / Fail / free text). */
+export const ISSUE_TRACKING_STATUS_OPTIONS = ["", "PASS", "Fail"] as const;
+
 /** RD block — visually distinct (orange) in UI / template. */
 export const ISSUE_TRACKING_RD_FIELDS: IssueTrackingField[] = [
   "rd_owner",
@@ -57,6 +63,7 @@ export type SecurityIssueTrackingRow = {
   roster_id: string;
   project_id: string;
   project_name: string;
+  status: string;
   task: string;
   issue_date: string;
   no: string;
@@ -108,6 +115,7 @@ export type IssueTrackingBulkImportResult = {
 };
 
 const HEADER_ALIASES: Record<string, IssueTrackingField> = {
+  status: "status",
   task: "task",
   date: "issue_date",
   issue_date: "issue_date",
@@ -237,13 +245,14 @@ export async function buildIssueTrackingTemplate(
     meta?.project_name ? `Project: ${meta.project_name}` : "",
     meta?.cycle_name ? `Cycle: ${meta.cycle_name}` : "",
     "",
-    "1. Keep header row labels (Task, Date, No, Defect ID, …). Aliases accepted on import.",
-    "2. Required for each data row: Defect ID and Title.",
-    "3. Existing Defect ID on this project is NOT overwritten — that row is reported as an error and skipped.",
-    "4. Duplicate Defect ID inside the file → later row(s) error.",
-    "5. Blank rows are ignored. Partial success: valid rows create; failed rows listed.",
-    "6. RD Owner / RD Comments / Conclusion headers are orange in the sample (visually distinct).",
-    "7. Delete the sample row before upload unless you intend to create Defect ID XXXXXX.",
+    "1. Keep header row labels (Status, Task, Date, No, Defect ID, …). Aliases accepted on import.",
+    "2. Status is optional (PASS / Fail / blank). Cover/report PASS sets Status=PASS but never drops prior rows.",
+    "3. Required for each data row: Defect ID and Title.",
+    "4. Existing Defect ID on this project is NOT overwritten — that row is reported as an error and skipped.",
+    "5. Duplicate Defect ID inside the file → later row(s) error.",
+    "6. Blank rows are ignored. Partial success: valid rows create; failed rows listed.",
+    "7. RD Owner / RD Comments / Conclusion headers are orange in the sample (visually distinct).",
+    "8. Delete the sample row before upload unless you intend to create Defect ID XXXXXX.",
   ].filter(Boolean);
   lines.forEach((text, i) => {
     help.getCell(i + 1, 1).value = text;
