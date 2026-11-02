@@ -179,6 +179,15 @@ export function canManageSecurityStructure(role: PersonnelRole): boolean {
   return role === "Admin" || role === "DM" || role === "DL";
 }
 
+/**
+ * Security Issue Tracking content (cells / add row / Excel import).
+ * All roles that can open Security: Admin / DM / DL / DE / DQA / PM / SA.
+ * Row delete stays on canManageSecurityStructure (Admin / DM / DL).
+ */
+export function canEditSecurityIssueTracking(role: PersonnelRole): boolean {
+  return canAccessView(role, "security");
+}
+
 /** Spreadsheet Type column for Work Log. */
 export const WORK_LOG_TYPES = ["PCR", "INV", "Bootleg", "SPB", "Formal", "IPU", "Sum"] as const;
 export type WorkLogType = (typeof WORK_LOG_TYPES)[number];

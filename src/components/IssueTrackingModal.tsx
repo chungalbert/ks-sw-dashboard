@@ -25,6 +25,17 @@ function downloadBuffer(name: string, buffer: ArrayBuffer) {
   URL.revokeObjectURL(url);
 }
 
+const LONG_FIELDS = new Set<IssueTrackingField>([
+  "steps_recover",
+  "condition_text",
+  "observed_symptom",
+  "dqa_comments",
+  "rd_comments",
+  "conclusion",
+]);
+
+type DraftMap = Record<string, Partial<Record<IssueTrackingField, string>>>;
+
 export function IssueTrackingModal({
   roster,
   cycleName,
@@ -38,23 +49,30 @@ export function IssueTrackingModal({
   cycleName: string;
   /** Admin/DM/DL — delete rows. */
   canManageStructure: boolean;
-  /** Everyone on Security can edit cells + add / Excel import. */
+  /** Admin/DM/DL/DE/DQA/PM/SA — edit cells + add / Excel import. */
   canEditContent: boolean;
   busy: boolean;
   runSave: <T>(fn: () => Promise<T>) => Promise<T>;
   onClose: () => void;
 }) {
   const [rows, setRows] = useState<SecurityIssueTrackingRow[]>([]);
+  const [drafts, setDrafts] = useState<DraftMap>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [importResult, setImportResult] = useState<IssueTrackingBulkImportResult | null>(null);
+  const [savingCell, setSavingCell] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  /** Keep latest row snapshot for blur compares without stale closures. */
+  const rowsRef = useRef(rows);
+  rowsRef.current = rows;
 
   const reload = async () => {
     setLoading(true);
     setError("");
     try {
-      setRows(await securityStore.listIssueTracking(roster.id));
+      const next = await securityStore.listIssueTracking(roster.id);
+      setRows(next);
+      setDrafts({});
     } catch (err) {
       setError(err instanceof Error ? err.message : "Load Issue Tracking failed");
     } finally {
@@ -67,15 +85,50 @@ export function IssueTrackingModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reload when roster changes
   }, [roster.id]);
 
+  const cellValue = (row: SecurityIssueTrackingRow, field: IssueTrackingField): string => {
+    const draft = drafts[row.id]?.[field];
+    return draft !== undefined ? draft : (row[field] ?? "");
+  };
+
+  const setCellDraft = (rowId: string, field: IssueTrackingField, value: string) => {
+    setDrafts((prev) => ({
+      ...prev,
+      [rowId]: { ...prev[rowId], [field]: value },
+    }));
+  };
+
+  const clearCellDraft = (rowId: string, field: IssueTrackingField) => {
+    setDrafts((prev) => {
+      const rowDraft = prev[rowId];
+      if (!rowDraft || rowDraft[field] === undefined) return prev;
+      const nextRow = { ...rowDraft };
+      delete nextRow[field];
+      const next = { ...prev };
+      if (Object.keys(nextRow).length === 0) delete next[rowId];
+      else next[rowId] = nextRow;
+      return next;
+    });
+  };
+
   const patchCell = async (id: string, field: IssueTrackingField, value: string) => {
     if (!canEditContent) return;
+    const current = rowsRef.current.find((r) => r.id === id);
+    if (!current || value === (current[field] ?? "")) {
+      clearCellDraft(id, field);
+      return;
+    }
     setError("");
+    const cellKey = `${id}:${field}`;
+    setSavingCell(cellKey);
     try {
       const updated = await runSave(() => securityStore.updateIssueTracking(id, { [field]: value }));
       setRows((prev) => prev.map((r) => (r.id === id ? updated : r)));
+      clearCellDraft(id, field);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Save failed");
-      await reload();
+      // Keep draft so the typed value stays visible; user can retry by blurring again.
+    } finally {
+      setSavingCell((prev) => (prev === cellKey ? null : prev));
     }
   };
 
@@ -107,6 +160,12 @@ export function IssueTrackingModal({
     try {
       await runSave(() => securityStore.deleteIssueTracking(id));
       setRows((prev) => prev.filter((r) => r.id !== id));
+      setDrafts((prev) => {
+        if (!(id in prev)) return prev;
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Delete failed");
     }
@@ -209,6 +268,7 @@ export function IssueTrackingModal({
             <p className="sec-it-sub">
               {roster.project_name}
               {cycleName ? ` · ${cycleName}` : ""}
+              {canEditContent ? " · editable" : " · view only"}
             </p>
           </div>
           <div className="sec-it-head-actions">
@@ -308,25 +368,34 @@ export function IssueTrackingModal({
                 ) : (
                   rows.map((row) => (
                     <tr key={row.id}>
-                      {ISSUE_TRACKING_FIELDS.map((field) => (
-                        <td key={field} className={ISSUE_TRACKING_RD_FIELDS.includes(field) ? "is-rd" : undefined}>
-                          {canEditContent ? (
-                            <textarea
-                              className="sec-it-cell"
-                              rows={field === "steps_recover" || field === "condition_text" || field === "observed_symptom" ? 3 : 1}
-                              defaultValue={row[field]}
-                              disabled={busy}
-                              aria-label={`${ISSUE_TRACKING_LABELS[field]} for ${row.defect_id || row.no || "row"}`}
-                              onBlur={(e) => {
-                                const next = e.target.value;
-                                if (next !== row[field]) void patchCell(row.id, field, next);
-                              }}
-                            />
-                          ) : (
-                            <span className="sec-it-readonly">{row[field] || "—"}</span>
-                          )}
-                        </td>
-                      ))}
+                      {ISSUE_TRACKING_FIELDS.map((field) => {
+                        const value = cellValue(row, field);
+                        const cellKey = `${row.id}:${field}`;
+                        const isSaving = savingCell === cellKey;
+                        return (
+                          <td
+                            key={field}
+                            className={ISSUE_TRACKING_RD_FIELDS.includes(field) ? "is-rd" : undefined}
+                          >
+                            {canEditContent ? (
+                              <textarea
+                                className={`sec-it-cell${isSaving ? " is-saving" : ""}`}
+                                rows={LONG_FIELDS.has(field) ? 3 : 2}
+                                value={value}
+                                readOnly={false}
+                                aria-readonly={false}
+                                aria-label={`${ISSUE_TRACKING_LABELS[field]} for ${row.defect_id || row.no || "row"}`}
+                                onChange={(e) => setCellDraft(row.id, field, e.target.value)}
+                                onBlur={(e) => {
+                                  void patchCell(row.id, field, e.target.value);
+                                }}
+                              />
+                            ) : (
+                              <span className="sec-it-readonly">{row[field] || "—"}</span>
+                            )}
+                          </td>
+                        );
+                      })}
                       {canManageStructure && (
                         <td>
                           <button
