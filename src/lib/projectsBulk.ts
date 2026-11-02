@@ -157,7 +157,7 @@ export async function buildProjectsBulkTemplate(): Promise<ArrayBuffer> {
   const help = wb.addWorksheet("Instructions");
   help.getColumn(1).width = 96;
   const lines = [
-    "KSSW Projects & Issues — bulk create (Admin / DL)",
+    "KSSW Projects & Issues — bulk create (Admin / DM / DL)",
     "",
     "1. Fill the Projects sheet. Keep headers (Compal Project Name is required).",
     "2. Existing Compal project names are NOT overwritten — duplicate rows are reported and skipped.",

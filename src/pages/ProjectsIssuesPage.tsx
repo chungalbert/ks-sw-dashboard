@@ -37,6 +37,7 @@ import {
   groupCheckpointsByType,
 } from "../lib/projectCheckpoints";
 import {
+  canBulkCreateProjects,
   canEditProjectCheckpoints,
   canManageProjectsIssues,
   isTaskOpen,
@@ -280,6 +281,8 @@ export function ProjectsIssuesPage({
   const personnelRole = user ? normalizePersonnelRole(user) : "DE";
   /** Admin + DL: full Projects & Issues privileges (edit/columns/create). */
   const canElevateProjects = canManageProjectsIssues(personnelRole);
+  /** Admin + DM + DL: Excel sample + bulk upload (not full edit mode). */
+  const canBulkProjects = canBulkCreateProjects(personnelRole);
   /** Admin + DL + DE: CheckPoint edit (not full project edit mode). */
   const canEditCpByRole = canEditProjectCheckpoints(personnelRole);
   const canCreate = Boolean(canElevateProjects || role === "leader");
@@ -829,7 +832,7 @@ export function ProjectsIssuesPage({
   };
 
   const onDownloadProjectsSample = async () => {
-    if (!canElevateProjects) return;
+    if (!canBulkProjects) return;
     setError("");
     try {
       downloadBuffer("kssw-projects-bulk-sample.xlsx", await buildProjectsBulkTemplate());
@@ -840,7 +843,7 @@ export function ProjectsIssuesPage({
 
   const onProjectsBulkSelected = async (file: File | null) => {
     if (bulkFileRef.current) bulkFileRef.current.value = "";
-    if (!canElevateProjects || !file) return;
+    if (!canBulkProjects || !file) return;
     if (!/\.xlsx?$/i.test(file.name)) {
       setError("Please upload an Excel file (.xlsx)");
       return;
@@ -1007,7 +1010,7 @@ export function ProjectsIssuesPage({
           <div className="pi-status-slot">
             {listLoading ? <LoadingIndicator /> : <SavingIndicator status={saveStatus} />}
           </div>
-          {canElevateProjects && mode === "list" && !editMode && (
+          {canBulkProjects && mode === "list" && !editMode && (
             <>
               <button
                 type="button"
@@ -1022,7 +1025,7 @@ export function ProjectsIssuesPage({
                 type="button"
                 className="pi-add-col"
                 disabled={listLoading || bulkBusy}
-                title="Upload Excel to create many projects (Admin / DL)"
+                title="Upload Excel to create many projects (Admin / DM / DL)"
                 onClick={() => bulkFileRef.current?.click()}
               >
                 {bulkBusy ? "Uploading…" : "Upload Excel"}
@@ -1035,17 +1038,19 @@ export function ProjectsIssuesPage({
                 aria-label="Upload Projects Excel"
                 onChange={(e) => void onProjectsBulkSelected(e.target.files?.[0] ?? null)}
               />
-              <button
-                type="button"
-                className="pi-btn-primary pi-edit-entry-btn"
-                disabled={listLoading || busyId === "edit-save"}
-                title="Edit project fields and columns (Admin)"
-                aria-label="Edit project fields and columns"
-                onClick={enterEditMode}
-              >
-                Edit
-              </button>
             </>
+          )}
+          {canElevateProjects && mode === "list" && !editMode && (
+            <button
+              type="button"
+              className="pi-btn-primary pi-edit-entry-btn"
+              disabled={listLoading || busyId === "edit-save"}
+              title="Edit project fields and columns (Admin)"
+              aria-label="Edit project fields and columns"
+              onClick={enterEditMode}
+            >
+              Edit
+            </button>
           )}
           {canElevateProjects && mode === "list" && editMode && (
             <>
