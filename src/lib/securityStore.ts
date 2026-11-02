@@ -12,6 +12,7 @@ import type {
   ItemApplyCell,
 } from "./cycleDetailTypes";
 import {
+  CycleDetailConflictError,
   deriveRosterStatusFromRelease,
   emptyCycleDetail,
   newDetailItemId,
@@ -902,7 +903,8 @@ export const securityStore = {
         };
       });
       if (changed) {
-        await securityStore.saveCycleDetail({ ...doc, items });
+        // Side-effect sync must not block on a concurrent editor's draft stamp.
+        await securityStore.saveCycleDetail({ ...doc, items }, { force: true });
       }
     }
   },
@@ -920,7 +922,7 @@ export const securityStore = {
         .filter((it) => it.issue_id !== issueId)
         .map((it, i) => ({ ...it, sort_order: i }));
       if (nextItems.length !== doc.items.length) {
-        await securityStore.saveCycleDetail({ ...doc, items: nextItems });
+        await securityStore.saveCycleDetail({ ...doc, items: nextItems }, { force: true });
       }
     }
   },
@@ -943,21 +945,39 @@ export const securityStore = {
     return null;
   },
 
-  /** Persist full draft (Save All). Upserts cloud row or local map. */
-  async saveCycleDetail(doc: CycleDetailDoc): Promise<CycleDetailDoc> {
+  /**
+   * Persist full draft (Save All). Upserts cloud row or local map.
+   * Optimistic lock: unless `force`, compares `doc.updated_at` to the stored stamp and
+   * throws `CycleDetailConflictError` when another save landed first (last-write would clobber).
+   */
+  async saveCycleDetail(
+    doc: CycleDetailDoc,
+    opts?: { force?: boolean },
+  ): Promise<CycleDetailDoc> {
+    const expectedUpdatedAt = opts?.force ? null : doc.updated_at || null;
     const normalized = normalizeDetailDoc(doc.cycle_id, {
       ...doc,
       updated_at: new Date().toISOString(),
     });
     if (await probeCloud()) {
       try {
-        return await cloudApi.upsertSecurityCycleDetail(normalized);
+        return await cloudApi.upsertSecurityCycleDetail(normalized, { expectedUpdatedAt });
       } catch (err) {
+        if (err instanceof CycleDetailConflictError) throw err;
         if (!isSecurityTableMissing(err)) throw err;
         cloudOk = false;
       }
     }
     const map = loadLocalDetails();
+    const prior = map[normalized.cycle_id];
+    if (
+      expectedUpdatedAt != null &&
+      expectedUpdatedAt !== "" &&
+      prior &&
+      prior.updated_at !== expectedUpdatedAt
+    ) {
+      throw new CycleDetailConflictError(normalizeDetailDoc(doc.cycle_id, prior));
+    }
     map[normalized.cycle_id] = normalized;
     saveLocalDetails(map);
     return normalized;

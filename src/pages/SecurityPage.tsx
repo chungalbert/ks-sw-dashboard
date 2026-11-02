@@ -473,9 +473,12 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
                 );
                 return updated;
               }}
-              onSave={async (doc) => {
+              onAdoptSaved={(doc) => setDetailDoc(doc)}
+              onSave={async (doc, opts) => {
                 const { saved, rosterUpdates } = await runSave(async () => {
-                  const savedDoc = await securityStore.saveCycleDetail(doc);
+                  const savedDoc = await securityStore.saveCycleDetail(doc, {
+                    force: opts?.force,
+                  });
                   const updates = await securityStore.syncRosterStatusesFromRelease(
                     savedDoc.cycle_id,
                     savedDoc.release,

@@ -64,6 +64,30 @@ export type CycleDetailDoc = {
   updated_at: string;
 };
 
+/** Thrown when Save All would overwrite a newer server revision (optimistic lock). */
+export class CycleDetailConflictError extends Error {
+  readonly code = "CYCLE_DETAIL_CONFLICT" as const;
+  readonly current: CycleDetailDoc;
+
+  constructor(current: CycleDetailDoc) {
+    super(
+      "This cycle was saved by someone else since you opened it. Save All would overwrite their changes.",
+    );
+    this.name = "CycleDetailConflictError";
+    this.current = current;
+  }
+}
+
+export function isCycleDetailConflictError(err: unknown): err is CycleDetailConflictError {
+  return (
+    err instanceof CycleDetailConflictError ||
+    (Boolean(err) &&
+      typeof err === "object" &&
+      (err as { code?: unknown }).code === "CYCLE_DETAIL_CONFLICT" &&
+      (err as { current?: unknown }).current != null)
+  );
+}
+
 /** Dropdown options (AIOSW). Empty = unset / —. */
 export const APPLY_STATUSES: ItemApplyStatus[] = [
   "",
