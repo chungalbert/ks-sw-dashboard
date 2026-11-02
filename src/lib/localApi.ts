@@ -21,8 +21,8 @@ import type {
   WorkLogType,
 } from "./types";
 import {
-  canEditProjectCheckpoints,
   canManageProjectsIssues,
+  canReadProjectsCatalog,
   NOTE_COLORS,
   normalizePersonnelRole,
   normalizeTaskStatus,
@@ -426,8 +426,9 @@ export const localApi = {
         a.id.localeCompare(b.id)
       );
     };
-    // Admin/DM/DL (full PI) and DE (CheckPoint on all projects) see every project.
-    if (user && canEditProjectCheckpoints(normalizePersonnelRole(user))) {
+    // Admin/DM/DL/DE (PI / CheckPoint) and DQA/PM/SA (Security Lenovo + cycle context)
+    // need the full catalog. Membership-only filter left for any future non-catalog role.
+    if (user && canReadProjectsCatalog(normalizePersonnelRole(user))) {
       return store.projects.slice().sort(bySort);
     }
     const ids = new Set(store.members.filter((m) => m.user_id === me).map((m) => m.project_id));

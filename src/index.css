@@ -7219,6 +7219,16 @@ button.sec-th-affordance:disabled {
   font-weight: 700;
   color: var(--sec-text);
 }
+.sec-proj-info-lenovo {
+  flex: 1 1 100%;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--sec-text);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .sec-proj-info-platform {
   font-size: 11px;
   color: var(--sec-muted);

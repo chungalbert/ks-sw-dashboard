@@ -178,6 +178,17 @@ export function canEditProjectCheckpoints(role: PersonnelRole): boolean {
 }
 
 /**
+ * Read the full projects catalog (Lenovo name, platform, SS/EOL, segment, …).
+ * Needed by Security roster + cycle-detail headers/info for every Security viewer.
+ * Does not grant Projects & Issues edit / columns / CheckPoint write — those stay
+ * on canManageProjectsIssues / canEditProjectCheckpoints.
+ * Admin / DM / DL / DE / DQA / PM / SA.
+ */
+export function canReadProjectsCatalog(role: PersonnelRole): boolean {
+  return canEditProjectCheckpoints(role) || isWorkspaceLimitedRole(role);
+}
+
+/**
  * Security outer structure (+ New item / New cycle / Edit cycle / delete item / Issue create).
  * Admin / DM / DL. DE / DQA / PM / SA edit inner matrix cells only (+ Save All).
  */
