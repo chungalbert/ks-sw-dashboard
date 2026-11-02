@@ -4,6 +4,7 @@ export type SecurityRosterStatus =
   | "Not Started"
   | "Internal release"
   | "SA BVT"
+  | "Completed with Issues"
   | "Completed";
 
 /** Named milestone / wave on a cycle (source of truth for roster Wave options). */
@@ -130,6 +131,7 @@ export const SECURITY_STATUSES: SecurityRosterStatus[] = [
   "Not Started",
   "Internal release",
   "SA BVT",
+  "Completed with Issues",
   "Completed",
 ];
 
