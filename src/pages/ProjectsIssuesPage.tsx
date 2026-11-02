@@ -16,6 +16,13 @@ import {
 import { api } from "../lib/api";
 import { addDaysISO, todayISO } from "../lib/dates";
 import {
+  buildProjectsBulkTemplate,
+  loadProjectsBulkWorkbook,
+  parseProjectsBulkWorkbook,
+  type ProjectBulkCreateResult,
+  type ProjectBulkRowError,
+} from "../lib/projectsBulk";
+import {
   isStandardProjectColumnId,
   PROJECT_LOCKED_COLUMN,
   projectsUiStore,
@@ -46,6 +53,18 @@ import {
 import { useAuth } from "../context/AuthContext";
 import { useStore } from "../context/StoreContext";
 import { useSaveStatus } from "../lib/useSaveStatus";
+
+function downloadBuffer(name: string, buffer: ArrayBuffer) {
+  const blob = new Blob([buffer], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = name;
+  link.click();
+  URL.revokeObjectURL(url);
+}
 
 type StatusFilter = "all" | TaskStatus;
 
@@ -223,6 +242,9 @@ export function ProjectsIssuesPage({
   const [description, setDescription] = useState("");
   const [error, setError] = useState("");
   const [busyId, setBusyId] = useState("");
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkResult, setBulkResult] = useState<ProjectBulkCreateResult | null>(null);
+  const bulkFileRef = useRef<HTMLInputElement>(null);
   const { saveStatus, runSave } = useSaveStatus();
   const listLoading = initialLoading || columnsLoading;
   const displayError = error || loadError;
@@ -806,6 +828,75 @@ export function ProjectsIssuesPage({
     }
   };
 
+  const onDownloadProjectsSample = async () => {
+    if (!canElevateProjects) return;
+    setError("");
+    try {
+      downloadBuffer("kssw-projects-bulk-sample.xlsx", await buildProjectsBulkTemplate());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Download sample failed");
+    }
+  };
+
+  const onProjectsBulkSelected = async (file: File | null) => {
+    if (bulkFileRef.current) bulkFileRef.current.value = "";
+    if (!canElevateProjects || !file) return;
+    if (!/\.xlsx?$/i.test(file.name)) {
+      setError("Please upload an Excel file (.xlsx)");
+      return;
+    }
+    setError("");
+    setBulkBusy(true);
+    setBulkResult(null);
+    try {
+      const workbook = await loadProjectsBulkWorkbook(await file.arrayBuffer());
+      const latest = await api.listProjects();
+      const parsed = parseProjectsBulkWorkbook(workbook, latest);
+      const created: ProjectBulkCreateResult["created"] = [];
+      const errors: ProjectBulkRowError[] = [...parsed.errors];
+      const knownNames = new Set(latest.map((p) => p.name.trim().toLowerCase()).filter(Boolean));
+
+      await runSave(async () => {
+        for (const item of parsed.valid) {
+          const key = item.name.toLowerCase();
+          if (knownNames.has(key)) {
+            errors.push({
+              row: item.row,
+              name: item.name,
+              reason: `Project “${item.name}” already exists — skipped (no overwrite)`,
+            });
+            continue;
+          }
+          try {
+            const project = await api.createProject(item.name, item.description);
+            knownNames.add(key);
+            if (Object.keys(item.patch).length > 0) {
+              await api.updateProject(project.id, item.patch);
+            }
+            created.push({ row: item.row, name: project.name, id: project.id });
+          } catch (err) {
+            errors.push({
+              row: item.row,
+              name: item.name,
+              reason: err instanceof Error ? err.message : "Create failed",
+            });
+          }
+        }
+        await reload();
+      });
+
+      setBulkResult({
+        created,
+        errors: errors.sort((a, b) => a.row - b.row),
+        attempted: parsed.valid.length + parsed.errors.length,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Excel upload failed");
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
   const onDeleteProject = async (id: string, projectName: string) => {
     const ok = window.confirm(`Delete “${projectName}”? Tasks and members will be removed.`);
     if (!ok) return;
@@ -917,16 +1008,44 @@ export function ProjectsIssuesPage({
             {listLoading ? <LoadingIndicator /> : <SavingIndicator status={saveStatus} />}
           </div>
           {canElevateProjects && mode === "list" && !editMode && (
-            <button
-              type="button"
-              className="pi-btn-primary pi-edit-entry-btn"
-              disabled={listLoading || busyId === "edit-save"}
-              title="Edit project fields and columns (Admin)"
-              aria-label="Edit project fields and columns"
-              onClick={enterEditMode}
-            >
-              Edit
-            </button>
+            <>
+              <button
+                type="button"
+                className="pi-add-col"
+                disabled={listLoading || bulkBusy}
+                title="Download Excel sample for bulk create"
+                onClick={() => void onDownloadProjectsSample()}
+              >
+                Excel sample
+              </button>
+              <button
+                type="button"
+                className="pi-add-col"
+                disabled={listLoading || bulkBusy}
+                title="Upload Excel to create many projects (Admin / DL)"
+                onClick={() => bulkFileRef.current?.click()}
+              >
+                {bulkBusy ? "Uploading…" : "Upload Excel"}
+              </button>
+              <input
+                ref={bulkFileRef}
+                type="file"
+                accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                className="pi-bulk-file"
+                aria-label="Upload Projects Excel"
+                onChange={(e) => void onProjectsBulkSelected(e.target.files?.[0] ?? null)}
+              />
+              <button
+                type="button"
+                className="pi-btn-primary pi-edit-entry-btn"
+                disabled={listLoading || busyId === "edit-save"}
+                title="Edit project fields and columns (Admin)"
+                aria-label="Edit project fields and columns"
+                onClick={enterEditMode}
+              >
+                Edit
+              </button>
+            </>
           )}
           {canElevateProjects && mode === "list" && editMode && (
             <>
@@ -1110,6 +1229,64 @@ export function ProjectsIssuesPage({
           </div>
         </div>
       </header>
+
+      {bulkResult && (
+        <div className="pi-bulk-backdrop" role="presentation" onClick={() => setBulkResult(null)}>
+          <div
+            className="pi-bulk-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="pi-bulk-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <header className="pi-bulk-head">
+              <h2 id="pi-bulk-title">Excel bulk create</h2>
+              <button type="button" className="pi-bulk-close" aria-label="Close" onClick={() => setBulkResult(null)}>
+                ×
+              </button>
+            </header>
+            <div className="pi-bulk-body">
+              <p>
+                Created <strong>{bulkResult.created.length}</strong>
+                {bulkResult.errors.length > 0 ? (
+                  <>
+                    {" "}
+                    · <strong className="pi-bulk-err">{bulkResult.errors.length}</strong> row
+                    {bulkResult.errors.length === 1 ? "" : "s"} skipped / failed
+                  </>
+                ) : (
+                  <> · no row errors</>
+                )}
+                . Existing projects were not overwritten.
+              </p>
+              {bulkResult.created.length > 0 && (
+                <ul className="pi-bulk-list">
+                  {bulkResult.created.map((c) => (
+                    <li key={c.id}>
+                      Row {c.row}: {c.name}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {bulkResult.errors.length > 0 && (
+                <ul className="pi-bulk-list is-errors">
+                  {bulkResult.errors.map((e, i) => (
+                    <li key={`${e.row}-${i}`}>
+                      Row {e.row}
+                      {e.name ? ` (${e.name})` : ""}: {e.reason}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <footer className="pi-bulk-foot">
+              <button type="button" className="pi-btn-primary" onClick={() => setBulkResult(null)}>
+                Close
+              </button>
+            </footer>
+          </div>
+        </div>
+      )}
 
       {displayError && <p className="pi-error">{displayError}</p>}
 
