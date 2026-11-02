@@ -276,6 +276,7 @@ function normalizeProjectRow(row: Project): Project {
     custom,
   });
   const customClean = stripCheckpointsCustomKey(custom);
+  const sortRaw = Number((row as Project & { sort_order?: unknown }).sort_order);
   return {
     ...row,
     lenovo_name: row.lenovo_name ?? "",
@@ -292,6 +293,7 @@ function normalizeProjectRow(row: Project): Project {
     custom: customClean,
     checkpoints: checkpointDoc.items,
     checkpoint_handover_date: checkpointDoc.handover_date,
+    sort_order: Number.isFinite(sortRaw) ? sortRaw : 0,
   };
 }
 
@@ -579,8 +581,23 @@ export const cloudApi = {
   },
 
   async listProjects(): Promise<Project[]> {
-    const { data, error } = await sb().from("projects").select("*").order("created_at");
-    if (error) throw error;
+    const { data, error } = await sb()
+      .from("projects")
+      .select("*")
+      .order("sort_order", { ascending: true })
+      .order("created_at", { ascending: true });
+    if (error) {
+      // Pre-migration DBs without sort_order: fall back to created_at.
+      const msg = String((error as { message?: string }).message ?? error);
+      if (/sort_order/i.test(msg) || /PGRST204|schema cache/i.test(msg)) {
+        const legacy = await sb().from("projects").select("*").order("created_at");
+        if (legacy.error) throw legacy.error;
+        return (legacy.data as Project[])
+          .map(normalizeProjectRow)
+          .filter((project) => !isProjectColumnsMetaProject(project));
+      }
+      throw error;
+    }
     return (data as Project[])
       .map(normalizeProjectRow)
       .filter((project) => !isProjectColumnsMetaProject(project));
@@ -594,13 +611,57 @@ export const cloudApi = {
     if (trimmed === PROJECT_COLUMNS_META_NAME) {
       throw new Error("此專案名稱為系統保留");
     }
-    const { data, error } = await sb()
-      .from("projects")
-      .insert({ name: trimmed, description, created_by: me.id })
-      .select()
-      .single();
-    if (error) throw error;
+    let nextSort = 0;
+    try {
+      const existing = await cloudApi.listProjects();
+      nextSort = existing.reduce((max, p) => Math.max(max, Number(p.sort_order) || 0), -1) + 1;
+    } catch {
+      nextSort = 0;
+    }
+    const insertRow: Record<string, unknown> = {
+      name: trimmed,
+      description,
+      created_by: me.id,
+      sort_order: nextSort,
+    };
+    const { data, error } = await sb().from("projects").insert(insertRow).select().single();
+    if (error) {
+      const msg = String((error as { message?: string }).message ?? error);
+      if (/sort_order/i.test(msg) || /PGRST204|schema cache/i.test(msg)) {
+        const { sort_order: _drop, ...withoutSort } = insertRow;
+        const retry = await sb().from("projects").insert(withoutSort).select().single();
+        if (retry.error) throw retry.error;
+        return normalizeProjectRow(retry.data as Project);
+      }
+      throw error;
+    }
     return normalizeProjectRow(data as Project);
+  },
+
+  /**
+   * Persist shared project display order (0-based contiguous).
+   * Admin/DM/DL Save from Projects & Issues edit mode.
+   * Security roster reads the same `projects.sort_order`.
+   */
+  async reorderProjects(orderedIds: string[]): Promise<void> {
+    const ids = orderedIds.map((id) => String(id || "").trim()).filter(Boolean);
+    if (ids.length === 0) return;
+    const results = await Promise.all(
+      ids.map(async (id, index) => {
+        const { error } = await sb().from("projects").update({ sort_order: index }).eq("id", id);
+        return error;
+      }),
+    );
+    const firstErr = results.find(Boolean);
+    if (firstErr) {
+      const msg = String((firstErr as { message?: string }).message ?? firstErr);
+      if (/sort_order/i.test(msg) || /PGRST204|schema cache/i.test(msg)) {
+        throw new Error(
+          "Neon 尚未載入 projects.sort_order。請套用 neon/project-sort-order.sql 後在 Data API 按 Refresh schema cache。",
+        );
+      }
+      throw firstErr;
+    }
   },
 
   async updateProject(projectId: string, patch: ProjectFieldPatch): Promise<Project> {

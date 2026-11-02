@@ -20,6 +20,7 @@ import {
 import type { SecurityCycle, SecurityIssue, SecurityRosterEntry } from "../lib/securityTypes";
 import { issueAllowedInCycle } from "../lib/securityTypes";
 import { seedDetailFromIssues } from "../lib/securityStore";
+import { projectSortOrderValue } from "../lib/projects";
 import type { Project } from "../lib/types";
 import {
   ProjectInfoPopover,
@@ -127,9 +128,12 @@ export function CycleDetailPanel({
   const projectCols: ProjectCol[] = useMemo(() => {
     const byId = new Map(projects.map((p) => [p.id, p]));
     const byName = new Map(projects.map((p) => [p.name, p]));
-    const rows = roster
-      .slice()
-      .sort((a, b) => a.sort_order - b.sort_order || a.project_name.localeCompare(b.project_name));
+    // Same shared projects.sort_order as Projects & Issues / Security roster.
+    const rows = roster.slice().sort((a, b) => {
+      const ao = projectSortOrderValue(byId.get(a.project_id) ?? byName.get(a.project_name), a.sort_order);
+      const bo = projectSortOrderValue(byId.get(b.project_id) ?? byName.get(b.project_name), b.sort_order);
+      return ao - bo || a.project_name.localeCompare(b.project_name);
+    });
     return rows.map((r) => {
       const linked = byId.get(r.project_id) ?? byName.get(r.project_name);
       const platform = [linked?.platform, linked?.bios_id].filter(Boolean).join(" / ");

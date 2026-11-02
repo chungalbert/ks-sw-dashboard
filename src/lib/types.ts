@@ -284,6 +284,12 @@ export interface Project {
   checkpoints?: ProjectCheckpoint[];
   /** Handover date shown above the CheckPoint sheet. */
   checkpoint_handover_date?: string;
+  /**
+   * Shared display order (Neon `projects.sort_order`).
+   * Projects & Issues + Security roster both sort ascending (small → large).
+   * UI shows 1-based numbers (sort_order 0 → "1").
+   */
+  sort_order?: number;
 }
 
 export interface ProjectMember {

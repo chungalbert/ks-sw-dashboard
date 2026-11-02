@@ -22,6 +22,7 @@ import {
   type ProjectBulkCreateResult,
   type ProjectBulkRowError,
 } from "../lib/projectsBulk";
+import { sortedProjectsBySortOrder } from "../lib/projects";
 import {
   isStandardProjectColumnId,
   PROJECT_LOCKED_COLUMN,
@@ -237,6 +238,8 @@ export function ProjectsIssuesPage({
   const [editMode, setEditMode] = useState(false);
   const [draftColumns, setDraftColumns] = useState<ProjectColumn[]>([]);
   const [draftPatches, setDraftPatches] = useState<Record<string, ProjectFieldPatch>>({});
+  /** Admin/DM/DL edit-mode draft: project row order (ids); persisted via reorderProjects on Save. */
+  const [draftProjectOrder, setDraftProjectOrder] = useState<string[] | null>(null);
   const [columnsLoading, setColumnsLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [name, setName] = useState("");
@@ -289,10 +292,17 @@ export function ProjectsIssuesPage({
   /** Column tools (+ ADD / Remove / reorder) only while elevated user is in edit mode on the list. */
   const canManageColumns = canElevateProjects && mode === "list" && editMode;
   const visibleColumns = editMode ? draftColumns : managedColumns;
+  const baselineProjectOrder = useMemo(
+    () => sortedProjectsBySortOrder(projects).map((p) => p.id),
+    [projects],
+  );
+  const projectOrderSignature = (ids: string[]) => ids.join("|");
   const editDirty =
     editMode &&
     (Object.keys(draftPatches).length > 0 ||
-      columnsSignature(draftColumns) !== columnsSignature(managedColumns));
+      columnsSignature(draftColumns) !== columnsSignature(managedColumns) ||
+      (draftProjectOrder != null &&
+        projectOrderSignature(draftProjectOrder) !== projectOrderSignature(baselineProjectOrder)));
 
   const refreshProjectColumns = async () => {
     try {
@@ -346,7 +356,7 @@ export function ProjectsIssuesPage({
 
   const projectRows = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return projects.filter((p) => {
+    const matches = (p: Project) => {
       if (!q) return true;
       const hay = [
         p.name,
@@ -368,8 +378,27 @@ export function ProjectsIssuesPage({
         .join(" ")
         .toLowerCase();
       return hay.includes(q);
-    });
-  }, [projects, query]);
+    };
+    if (editMode && draftProjectOrder) {
+      const byId = new Map(projects.map((p) => [p.id, p]));
+      const ordered: Project[] = [];
+      for (const id of draftProjectOrder) {
+        const p = byId.get(id);
+        if (p && matches(p)) ordered.push(p);
+      }
+      return ordered;
+    }
+    return sortedProjectsBySortOrder(projects.filter(matches));
+  }, [projects, query, editMode, draftProjectOrder]);
+
+  /** 1-based sort numbers for the SORT column (draft order in edit mode). */
+  const sortNumberById = useMemo(() => {
+    const order =
+      editMode && draftProjectOrder ? draftProjectOrder : baselineProjectOrder;
+    const map = new Map<string, number>();
+    order.forEach((id, index) => map.set(id, index + 1));
+    return map;
+  }, [editMode, draftProjectOrder, baselineProjectOrder]);
 
   const standardFieldValue = (project: Project, key: ProjectStandardKey): string => {
     return (project[key] as string | undefined) ?? "";
@@ -400,6 +429,7 @@ export function ProjectsIssuesPage({
     closeColumnPopovers();
     setDraftColumns(managedColumns.map((c) => ({ ...c })));
     setDraftPatches({});
+    setDraftProjectOrder(baselineProjectOrder.slice());
     setEditMode(true);
   };
 
@@ -407,7 +437,22 @@ export function ProjectsIssuesPage({
     setEditMode(false);
     setDraftColumns([]);
     setDraftPatches({});
+    setDraftProjectOrder(null);
     closeColumnPopovers();
+  };
+
+  const moveDraftProject = (projectId: string, delta: -1 | 1) => {
+    setDraftProjectOrder((prev) => {
+      if (!prev) return prev;
+      const index = prev.indexOf(projectId);
+      const nextIndex = index + delta;
+      if (index < 0 || nextIndex < 0 || nextIndex >= prev.length) return prev;
+      const next = prev.slice();
+      const tmp = next[index];
+      next[index] = next[nextIndex];
+      next[nextIndex] = tmp;
+      return next;
+    });
   };
 
   const cancelEditMode = () => {
@@ -427,9 +472,13 @@ export function ProjectsIssuesPage({
     setError("");
     setBusyId("edit-save");
     const columnsChanged = columnsSignature(draftColumns) !== columnsSignature(managedColumns);
+    const orderChanged =
+      draftProjectOrder != null &&
+      projectOrderSignature(draftProjectOrder) !== projectOrderSignature(baselineProjectOrder);
     const patches = Object.entries(draftPatches);
     const savedColumns = draftColumns.map((c) => ({ ...c }));
     const savedPatches = { ...draftPatches };
+    const savedOrder = draftProjectOrder ? draftProjectOrder.slice() : null;
     try {
       await runSave(async () => {
         if (columnsChanged) {
@@ -438,13 +487,25 @@ export function ProjectsIssuesPage({
         if (patches.length > 0) {
           await Promise.all(patches.map(([id, patch]) => api.updateProject(id, patch)));
         }
+        if (orderChanged && savedOrder) {
+          await api.reorderProjects(savedOrder);
+        }
       });
       // Keep rows visible immediately: apply drafts locally, then soft-refresh.
       // Do not set columnsLoading / initialLoading — that was wiping the list.
       if (columnsChanged) setManagedColumns(savedColumns);
-      if (Object.keys(savedPatches).length > 0) {
+      if (Object.keys(savedPatches).length > 0 || (orderChanged && savedOrder)) {
+        const orderRank = savedOrder
+          ? new Map(savedOrder.map((id, index) => [id, index]))
+          : null;
         patchProjectsLocal((prev) =>
-          prev.map((p) => mergeProjectDraft(p, savedPatches[p.id])),
+          prev.map((p) => {
+            const merged = mergeProjectDraft(p, savedPatches[p.id]);
+            if (orderRank && orderRank.has(p.id)) {
+              return { ...merged, sort_order: orderRank.get(p.id) };
+            }
+            return merged;
+          }),
         );
       }
       exitEditModeLocal();
@@ -532,7 +593,8 @@ export function ProjectsIssuesPage({
     });
   };
 
-  const listColSpan = 1 + visibleColumns.length + 1;
+  /** SORT + Compal name + managed columns + Actions. */
+  const listColSpan = 2 + visibleColumns.length + 1;
 
   const detailTasks = useMemo(() => {
     if (!project) return [] as Task[];
@@ -1322,6 +1384,7 @@ export function ProjectsIssuesPage({
           <table className={`pi-table pi-project-table${editMode ? " pi-project-table-editing" : ""}`}>
             <thead>
               <tr>
+                <th className="pi-sort-col">SORT</th>
                 <th>{PROJECT_LOCKED_COLUMN.label}</th>
                 {visibleColumns.map((col, index) => (
                   <th key={col.id}>
@@ -1375,8 +1438,46 @@ export function ProjectsIssuesPage({
                   const draft = mergeProjectDraft(project, editMode ? draftPatches[project.id] : undefined);
                   const canEditFields = canElevateProjects && editMode;
                   const busy = busyId === project.id || busyId === "edit-save";
+                  const sortNum = sortNumberById.get(project.id) ?? "—";
+                  const orderIndex = draftProjectOrder?.indexOf(project.id) ?? -1;
+                  const canReorderRow = Boolean(canEditFields && draftProjectOrder);
                   return (
                     <tr key={project.id}>
+                      <td className="pi-sort-col">
+                        {canReorderRow ? (
+                          <div className="pi-sort-cell">
+                            <span className="pi-sort-num" aria-label={`Sort ${sortNum}`}>
+                              {sortNum}
+                            </span>
+                            <span className="pi-col-reorder pi-row-reorder">
+                              <button
+                                type="button"
+                                className="pi-col-move"
+                                aria-label={`Move ${draft.name || "project"} up`}
+                                disabled={busy || orderIndex <= 0}
+                                onClick={() => moveDraftProject(project.id, -1)}
+                              >
+                                ↑
+                              </button>
+                              <button
+                                type="button"
+                                className="pi-col-move"
+                                aria-label={`Move ${draft.name || "project"} down`}
+                                disabled={
+                                  busy ||
+                                  orderIndex < 0 ||
+                                  orderIndex >= (draftProjectOrder?.length ?? 0) - 1
+                                }
+                                onClick={() => moveDraftProject(project.id, 1)}
+                              >
+                                ↓
+                              </button>
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="pi-sort-num">{sortNum}</span>
+                        )}
+                      </td>
                       <td>
                         {canEditFields ? (
                           <input

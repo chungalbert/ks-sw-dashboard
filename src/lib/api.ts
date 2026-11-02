@@ -403,6 +403,14 @@ export const api = {
     if (hasSupabaseConfig()) return withProjectOverlay(await cloudApi.createProject(name, description));
     return withProjectOverlay(localApi.createProject(name, description));
   },
+  /** Persist shared project sort_order (0-based). Used by Projects & Issues edit Save. */
+  async reorderProjects(orderedIds: string[]): Promise<void> {
+    if (hasSupabaseConfig()) {
+      await cloudApi.reorderProjects(orderedIds);
+      return;
+    }
+    localApi.reorderProjects(orderedIds);
+  },
   async updateProject(projectId: string, patch: ProjectFieldPatch): Promise<Project> {
     if (!hasSupabaseConfig()) {
       return withProjectOverlay(localApi.updateProject(projectId, patch));

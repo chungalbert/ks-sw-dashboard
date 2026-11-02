@@ -417,15 +417,30 @@ export const localApi = {
     const store = load();
     const me = store.sessionUserId;
     const user = store.profiles.find((p) => p.id === me);
+    const bySort = (a: Project, b: Project) => {
+      const ao = Number.isFinite(Number(a.sort_order)) ? Number(a.sort_order) : 0;
+      const bo = Number.isFinite(Number(b.sort_order)) ? Number(b.sort_order) : 0;
+      return (
+        ao - bo ||
+        a.name.localeCompare(b.name, undefined, { sensitivity: "base" }) ||
+        a.id.localeCompare(b.id)
+      );
+    };
     // Admin/DM/DL (full PI) and DE (CheckPoint on all projects) see every project.
-    if (user && canEditProjectCheckpoints(normalizePersonnelRole(user))) return store.projects;
+    if (user && canEditProjectCheckpoints(normalizePersonnelRole(user))) {
+      return store.projects.slice().sort(bySort);
+    }
     const ids = new Set(store.members.filter((m) => m.user_id === me).map((m) => m.project_id));
-    return store.projects.filter((p) => ids.has(p.id));
+    return store.projects.filter((p) => ids.has(p.id)).sort(bySort);
   },
 
   createProject(name: string, description: string): Project {
     const store = load();
     if (!store.sessionUserId) throw new Error("尚未登入");
+    const maxSort = store.projects.reduce(
+      (max, p) => Math.max(max, Number.isFinite(Number(p.sort_order)) ? Number(p.sort_order) : 0),
+      -1,
+    );
     const project: Project = {
       id: crypto.randomUUID(),
       name: name.trim(),
@@ -444,6 +459,7 @@ export const localApi = {
       project_owner: "",
       tpe_owner: "",
       custom: {},
+      sort_order: maxSort + 1,
     };
     store.projects.push(project);
     store.members.push({
@@ -453,6 +469,21 @@ export const localApi = {
     });
     save(store);
     return project;
+  },
+
+  reorderProjects(orderedIds: string[]): void {
+    const store = load();
+    if (!store.sessionUserId) throw new Error("尚未登入");
+    const user = store.profiles.find((p) => p.id === store.sessionUserId);
+    if (!user || !canManageProjectsIssues(normalizePersonnelRole(user))) {
+      throw new Error("只有 Admin / DM / DL 可以調整專案排序");
+    }
+    const rank = new Map(orderedIds.map((id, index) => [id, index]));
+    for (const project of store.projects) {
+      const next = rank.get(project.id);
+      if (next !== undefined) project.sort_order = next;
+    }
+    save(store);
   },
 
   updateProject(
