@@ -3728,7 +3728,21 @@ select.pi-state {
 
 .personnel-col-remove:hover { color: #f28b82; }
 
-.personnel-projects-edit { position: relative; min-width: 140px; }
+/* PROJECTS col: ~2/3 of prior content min-width (140px → 93px). */
+.personnel-table th.personnel-col-projects,
+.personnel-table td.personnel-col-projects {
+  width: 121px; /* 93px content + default 14px side padding */
+  max-width: 121px;
+  box-sizing: border-box;
+  vertical-align: middle;
+}
+
+.personnel-projects-edit {
+  position: relative;
+  width: 93px;
+  min-width: 93px;
+  max-width: 93px;
+}
 
 .personnel-projects-btn {
   width: 100%;
@@ -3737,10 +3751,12 @@ select.pi-state {
   color: inherit;
   text-align: left;
   cursor: pointer;
-  padding: 4px 6px;
+  padding: 4px 22px 4px 4px; /* right pad keeps ✎ visible */
   border-radius: 8px;
   display: grid;
   gap: 2px;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .personnel-projects-btn:hover {
@@ -3748,12 +3764,20 @@ select.pi-state {
   background: #1f2023;
 }
 
+.personnel-projects-btn > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
 .personnel-edit-icon {
   position: absolute;
-  right: 6px;
+  right: 4px;
   top: 6px;
   color: var(--per-muted);
   font-size: 12px;
+  pointer-events: none;
 }
 
 .personnel-project-picker {
@@ -3889,17 +3913,24 @@ select.pi-state {
 .personnel-projects {
   display: grid;
   gap: 2px;
-  min-width: 120px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .personnel-unassigned {
   color: var(--per-muted);
   font-style: italic;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .personnel-project-names {
   font-size: 12px;
   color: var(--per-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .personnel-issue-badge {

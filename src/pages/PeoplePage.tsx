@@ -707,7 +707,7 @@ export function PeoplePage({
               <th>ID</th>
               <th>PHONE</th>
               <th>ROLE</th>
-              <th>PROJECTS</th>
+              <th className="personnel-col-projects">PROJECTS</th>
               {columns.map((col) => (
                 <th key={col.id}>
                   <span className="personnel-col-head">
@@ -940,7 +940,7 @@ function PersonRow({
           ))}
         </select>
       </td>
-      <td>
+      <td className="personnel-col-projects">
         <div className="personnel-projects-edit" ref={projectsEditRef}>
           <button type="button" className="personnel-projects-btn" onClick={onTogglePicker} disabled={busy}>
             {projectCount === 0 ? (
