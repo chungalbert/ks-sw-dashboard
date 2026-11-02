@@ -1,4 +1,14 @@
-import { FormEvent, Fragment, useEffect, useMemo, useRef, useState } from "react";
+import {
+  FormEvent,
+  Fragment,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type DragEvent,
+  type KeyboardEvent,
+  type TouchEvent,
+} from "react";
 import {
   EMPTY_ISSUE_COLUMN_FILTERS,
   IssueColumnFilter,
@@ -240,6 +250,12 @@ export function ProjectsIssuesPage({
   const [draftPatches, setDraftPatches] = useState<Record<string, ProjectFieldPatch>>({});
   /** Admin/DM/DL edit-mode draft: project row order (ids); persisted via reorderProjects on Save. */
   const [draftProjectOrder, setDraftProjectOrder] = useState<string[] | null>(null);
+  /** HTML5 / touch drag source for SORT reorder (edit mode only). */
+  const [dragProjectId, setDragProjectId] = useState<string | null>(null);
+  const [dragOverProjectId, setDragOverProjectId] = useState<string | null>(null);
+  const touchDragIdRef = useRef<string | null>(null);
+  const dragProjectIdRef = useRef<string | null>(null);
+  const dragOverProjectIdRef = useRef<string | null>(null);
   const [columnsLoading, setColumnsLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [name, setName] = useState("");
@@ -438,6 +454,11 @@ export function ProjectsIssuesPage({
     setDraftColumns([]);
     setDraftPatches({});
     setDraftProjectOrder(null);
+    touchDragIdRef.current = null;
+    dragProjectIdRef.current = null;
+    dragOverProjectIdRef.current = null;
+    setDragProjectId(null);
+    setDragOverProjectId(null);
     closeColumnPopovers();
   };
 
@@ -453,6 +474,137 @@ export function ProjectsIssuesPage({
       next[nextIndex] = tmp;
       return next;
     });
+  };
+
+  /**
+   * Place `fromId` at `toId` (or just after when placeBefore is false).
+   * SORT 1..n numbers recompute from draft order immediately (Save still persists).
+   */
+  const reorderDraftProjectTo = (fromId: string, toId: string, placeBefore = true) => {
+    setDraftProjectOrder((prev) => {
+      if (!prev || fromId === toId) return prev;
+      const without = prev.filter((id) => id !== fromId);
+      let insertAt = without.indexOf(toId);
+      if (insertAt < 0) return prev;
+      if (!placeBefore) insertAt += 1;
+      const next = without.slice();
+      next.splice(insertAt, 0, fromId);
+      if (next.length === prev.length && next.every((id, i) => id === prev[i])) return prev;
+      return next;
+    });
+  };
+
+  const clearProjectDrag = () => {
+    touchDragIdRef.current = null;
+    dragProjectIdRef.current = null;
+    dragOverProjectIdRef.current = null;
+    setDragProjectId(null);
+    setDragOverProjectId(null);
+  };
+
+  const onProjectSortDragStart = (projectId: string, event: DragEvent<HTMLElement>) => {
+    if (!editMode || !draftProjectOrder) {
+      event.preventDefault();
+      return;
+    }
+    dragProjectIdRef.current = projectId;
+    setDragProjectId(projectId);
+    dragOverProjectIdRef.current = null;
+    setDragOverProjectId(null);
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", projectId);
+    // Avoid opaque ghost covering the drop target in some browsers.
+    try {
+      const ghost = event.currentTarget.cloneNode(true) as HTMLElement;
+      ghost.style.position = "absolute";
+      ghost.style.top = "-9999px";
+      document.body.appendChild(ghost);
+      event.dataTransfer.setDragImage(ghost, 12, 12);
+      window.setTimeout(() => ghost.remove(), 0);
+    } catch {
+      /* setDragImage optional */
+    }
+  };
+
+  const onProjectSortDragEnd = () => {
+    clearProjectDrag();
+  };
+
+  const onProjectRowDragOver = (projectId: string, event: DragEvent<HTMLTableRowElement>) => {
+    const fromId = dragProjectIdRef.current;
+    if (!fromId || !editMode) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    if (fromId === projectId) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const placeBefore = event.clientY < rect.top + rect.height / 2;
+    const overKey = `${projectId}:${placeBefore ? "before" : "after"}`;
+    if (dragOverProjectIdRef.current !== overKey) {
+      dragOverProjectIdRef.current = overKey;
+      setDragOverProjectId(projectId);
+      reorderDraftProjectTo(fromId, projectId, placeBefore);
+    }
+  };
+
+  const onProjectRowDrop = (projectId: string, event: DragEvent<HTMLTableRowElement>) => {
+    if (!editMode || !draftProjectOrder) return;
+    event.preventDefault();
+    const fromId =
+      event.dataTransfer.getData("text/plain") || dragProjectIdRef.current || dragProjectId;
+    if (fromId && fromId !== projectId) {
+      const rect = event.currentTarget.getBoundingClientRect();
+      const placeBefore = event.clientY < rect.top + rect.height / 2;
+      reorderDraftProjectTo(fromId, projectId, placeBefore);
+    }
+    clearProjectDrag();
+  };
+
+  const onProjectSortTouchStart = (projectId: string) => {
+    if (!editMode || !draftProjectOrder) return;
+    touchDragIdRef.current = projectId;
+    dragProjectIdRef.current = projectId;
+    dragOverProjectIdRef.current = null;
+    setDragProjectId(projectId);
+    setDragOverProjectId(null);
+  };
+
+  const onProjectSortTouchMove = (event: TouchEvent<HTMLElement>) => {
+    const fromId = touchDragIdRef.current;
+    if (!fromId || !editMode) return;
+    const touch = event.touches[0];
+    if (!touch) return;
+    // Keep scroll from stealing the gesture while dragging the handle.
+    event.preventDefault();
+    const el = document.elementFromPoint(touch.clientX, touch.clientY);
+    const row = el?.closest?.("tr[data-project-id]") as HTMLElement | null;
+    const overId = row?.dataset?.projectId ?? null;
+    if (!row || !overId || overId === fromId) {
+      dragOverProjectIdRef.current = null;
+      setDragOverProjectId(null);
+      return;
+    }
+    const rect = row.getBoundingClientRect();
+    const placeBefore = touch.clientY < rect.top + rect.height / 2;
+    const overKey = `${overId}:${placeBefore ? "before" : "after"}`;
+    if (dragOverProjectIdRef.current === overKey) return;
+    dragOverProjectIdRef.current = overKey;
+    setDragOverProjectId(overId);
+    reorderDraftProjectTo(fromId, overId, placeBefore);
+  };
+
+  const onProjectSortTouchEnd = () => {
+    clearProjectDrag();
+  };
+
+  const onProjectSortKeyDown = (projectId: string, event: KeyboardEvent<HTMLElement>) => {
+    if (!editMode || !draftProjectOrder) return;
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      moveDraftProject(projectId, -1);
+    } else if (event.key === "ArrowDown") {
+      event.preventDefault();
+      moveDraftProject(projectId, 1);
+    }
   };
 
   const cancelEditMode = () => {
@@ -1439,39 +1591,60 @@ export function ProjectsIssuesPage({
                   const canEditFields = canElevateProjects && editMode;
                   const busy = busyId === project.id || busyId === "edit-save";
                   const sortNum = sortNumberById.get(project.id) ?? "—";
-                  const orderIndex = draftProjectOrder?.indexOf(project.id) ?? -1;
-                  const canReorderRow = Boolean(canEditFields && draftProjectOrder);
+                  const canReorderRow = Boolean(canEditFields && draftProjectOrder && !busy);
+                  const isDragging = dragProjectId === project.id;
+                  const isDragOver =
+                    Boolean(dragOverProjectId === project.id && dragProjectId && dragProjectId !== project.id);
                   return (
-                    <tr key={project.id}>
+                    <tr
+                      key={project.id}
+                      data-project-id={project.id}
+                      className={[
+                        isDragging ? "pi-project-row-dragging" : "",
+                        isDragOver ? "pi-project-row-drag-over" : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
+                      onDragOver={
+                        canReorderRow ? (e) => onProjectRowDragOver(project.id, e) : undefined
+                      }
+                      onDrop={canReorderRow ? (e) => onProjectRowDrop(project.id, e) : undefined}
+                    >
                       <td className="pi-sort-col">
                         {canReorderRow ? (
                           <div className="pi-sort-cell">
+                            <span
+                              className="pi-sort-handle"
+                              role="button"
+                              tabIndex={0}
+                              draggable
+                              aria-label={`Drag to reorder ${draft.name || "project"}, sort ${sortNum}. Arrow keys also move.`}
+                              title="Drag to reorder"
+                              onDragStart={(e) => onProjectSortDragStart(project.id, e)}
+                              onDragEnd={onProjectSortDragEnd}
+                              onTouchStart={() => onProjectSortTouchStart(project.id)}
+                              onTouchMove={onProjectSortTouchMove}
+                              onTouchEnd={onProjectSortTouchEnd}
+                              onTouchCancel={onProjectSortTouchEnd}
+                              onKeyDown={(e) => onProjectSortKeyDown(project.id, e)}
+                            >
+                              <svg
+                                className="pi-sort-handle-icon"
+                                width="14"
+                                height="14"
+                                viewBox="0 0 16 16"
+                                aria-hidden="true"
+                              >
+                                <circle cx="5" cy="3" r="1.25" fill="currentColor" />
+                                <circle cx="11" cy="3" r="1.25" fill="currentColor" />
+                                <circle cx="5" cy="8" r="1.25" fill="currentColor" />
+                                <circle cx="11" cy="8" r="1.25" fill="currentColor" />
+                                <circle cx="5" cy="13" r="1.25" fill="currentColor" />
+                                <circle cx="11" cy="13" r="1.25" fill="currentColor" />
+                              </svg>
+                            </span>
                             <span className="pi-sort-num" aria-label={`Sort ${sortNum}`}>
                               {sortNum}
-                            </span>
-                            <span className="pi-col-reorder pi-row-reorder">
-                              <button
-                                type="button"
-                                className="pi-col-move"
-                                aria-label={`Move ${draft.name || "project"} up`}
-                                disabled={busy || orderIndex <= 0}
-                                onClick={() => moveDraftProject(project.id, -1)}
-                              >
-                                ↑
-                              </button>
-                              <button
-                                type="button"
-                                className="pi-col-move"
-                                aria-label={`Move ${draft.name || "project"} down`}
-                                disabled={
-                                  busy ||
-                                  orderIndex < 0 ||
-                                  orderIndex >= (draftProjectOrder?.length ?? 0) - 1
-                                }
-                                onClick={() => moveDraftProject(project.id, 1)}
-                              >
-                                ↓
-                              </button>
                             </span>
                           </div>
                         ) : (
