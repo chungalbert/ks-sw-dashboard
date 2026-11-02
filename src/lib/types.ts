@@ -104,11 +104,14 @@ export function isTaskClosed(status: string): boolean {
 export const PERSONNEL_ROLES = ["Admin", "DM", "DL", "DE", "DQA", "PM", "SA"] as const;
 export type PersonnelRole = (typeof PERSONNEL_ROLES)[number];
 
-/** Roles limited to WORKSPACE Security + INV&PCR only. */
+/** Roles limited to WORKSPACE Security + INV&PCR (SA also gets Tool — see canAccessView). */
 export const WORKSPACE_LIMITED_ROLES = ["DQA", "PM", "SA"] as const;
 export type WorkspaceLimitedRole = (typeof WORKSPACE_LIMITED_ROLES)[number];
 
 export const WORKSPACE_LIMITED_VIEWS = ["security", "inv-pcr"] as const satisfies readonly ViewId[];
+
+/** Extra views SA may open beyond the shared limited set (Tool hub + OTP / WHEA children). */
+export const SA_EXTRA_VIEWS = ["tool", "otp", "whea"] as const satisfies readonly ViewId[];
 
 export interface PersonnelColumn {
   id: string;
@@ -141,7 +144,10 @@ export function isWorkspaceLimitedRole(role: PersonnelRole): boolean {
 
 export function canAccessView(role: PersonnelRole, view: ViewId): boolean {
   if (!isWorkspaceLimitedRole(role)) return true;
-  return (WORKSPACE_LIMITED_VIEWS as readonly string[]).includes(view);
+  if ((WORKSPACE_LIMITED_VIEWS as readonly string[]).includes(view)) return true;
+  // SA-only Tool grant (OTP Vault, WHEA Analyzer); DQA/PM stay Security + INV&PCR.
+  if (role === "SA" && (SA_EXTRA_VIEWS as readonly string[]).includes(view)) return true;
+  return false;
 }
 
 /** Work Log + Personnel: Admin / DM / DL / DE (not DQA / PM / SA). */
