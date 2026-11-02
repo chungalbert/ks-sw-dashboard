@@ -5901,15 +5901,75 @@ select.pi-state {
 .sec-roster-head {
   flex-shrink: 0;
   padding: 0 16px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.sec-roster-head-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
 }
 .sec-roster-head h2 {
   margin: 0;
   font-size: 16px;
 }
 .sec-roster-head p {
-  margin: 4px 0 0;
+  margin: 0;
   color: var(--sec-muted);
   font-size: 12px;
+}
+/* Cycle-wide Issue Tracking 總表 entry (Security overview · Project roster). */
+.sec-it-summary-entry {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #3b82f6;
+  background: linear-gradient(135deg, #1e3a5f 0%, #16324f 55%, #1e293b 100%);
+  color: #bfdbfe;
+  border-radius: 10px;
+  padding: 0.45rem 0.85rem 0.45rem 0.65rem;
+  cursor: pointer;
+  text-align: left;
+  box-shadow: inset 0 1px 0 rgba(147, 197, 253, 0.12);
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.sec-it-summary-entry:hover:not(:disabled) {
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  border-color: #60a5fa;
+  color: #fff;
+}
+.sec-it-summary-entry:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.sec-it-summary-entry-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: rgba(59, 130, 246, 0.25);
+  flex-shrink: 0;
+}
+.sec-it-summary-entry-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  line-height: 1.2;
+}
+.sec-it-summary-entry-copy strong {
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+.sec-it-summary-entry-copy span {
+  font-size: 0.68rem;
+  opacity: 0.85;
+  font-weight: 500;
 }
 .sec-roster-table-wrap {
   flex: 1 1 auto;
@@ -6282,6 +6342,61 @@ button.sec-th-affordance:disabled {
 }
 .sec-it-del:hover:not(:disabled) { background: #7f1d1d; color: #fff; }
 .sec-it-actions-col { min-width: 64px !important; background: #3c4043 !important; color: #e8eaed !important; }
+.sec-it-filter {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 140px;
+}
+.sec-it-filter-label {
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #9aa0a6;
+}
+.sec-it-filter input,
+.sec-it-filter select {
+  border: 1px solid #3c4043;
+  background: #202124;
+  color: #e8eaed;
+  border-radius: 8px;
+  padding: 0.4rem 0.55rem;
+  font-size: 0.8rem;
+  min-width: 160px;
+}
+.sec-it-filter input:focus,
+.sec-it-filter select:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+.sec-it-table th.is-project {
+  background: #3c4043;
+  color: #e8eaed;
+  min-width: 140px;
+  position: sticky;
+  left: 0;
+  z-index: 2;
+}
+.sec-it-project-cell {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: #303134;
+  min-width: 140px;
+  max-width: 200px;
+  vertical-align: top;
+}
+.sec-it-project-name {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 650;
+  color: #e8eaed;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0.35rem 0.25rem;
+}
 .sec-issues {
   background: var(--sec-panel);
   border: 1px solid var(--sec-line);
