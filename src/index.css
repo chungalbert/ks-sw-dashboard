@@ -6375,8 +6375,9 @@ button.sec-th-affordance:disabled {
   color: #e8eaed;
   min-width: 140px;
   position: sticky;
+  top: 0;
   left: 0;
-  z-index: 2;
+  z-index: 3;
 }
 .sec-it-project-cell {
   position: sticky;
