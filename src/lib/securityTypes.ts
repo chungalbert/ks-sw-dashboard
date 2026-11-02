@@ -5,6 +5,7 @@ export type SecurityRosterStatus =
   | "Internal release"
   | "SA BVT"
   | "Issue Clarification"
+  | "Test Pass"
   | "Completed";
 
 /** Named milestone / wave on a cycle (source of truth for roster Wave options). */
@@ -127,11 +128,13 @@ export function issueAllowedInCycle(
   return issue.cycle_ids.includes(cycleId);
 }
 
+/** Status options (chip labels + Not Started). Order matches overview chip ladder. */
 export const SECURITY_STATUSES: SecurityRosterStatus[] = [
   "Not Started",
   "Internal release",
   "SA BVT",
   "Issue Clarification",
+  "Test Pass",
   "Completed",
 ];
 

@@ -990,11 +990,11 @@ function OverviewPanel({
                     <td>
                       <span
                         className="sec-status-pill sec-status-derived"
-                        title="Derived from Project Release Tracking: DQA+Sign Done → Completed; DQA Test Complete → Issue Clarification; else Internal / SA BVT ladder"
+                        title="Derived from Project Release Tracking: Completed → Test Pass → Issue Clarification → SA BVT → Internal release (exclusive; chips may overlap)"
                       >
                         <span
                           className={`sec-dot${
-                            row.status === "Completed"
+                            row.status === "Completed" || row.status === "Test Pass"
                               ? " is-ok"
                               : row.status === "Not Started"
                                 ? " is-muted"
