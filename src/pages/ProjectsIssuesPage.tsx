@@ -1109,7 +1109,7 @@ export function ProjectsIssuesPage({
                     <input
                       value={newColLabel}
                       onChange={(e) => setNewColLabel(e.target.value)}
-                      placeholder="e.g. Region or BIOS ID"
+                      placeholder="e.g. Region or MTCODE"
                       autoFocus
                     />
                   </label>
@@ -1400,7 +1400,8 @@ export function ProjectsIssuesPage({
                         const stdKey = standardKeyForColumn(col);
                         if (stdKey) {
                           const value = standardFieldValue(draft, stdKey);
-                          const isDate = stdKey === "ss_date" || stdKey === "eol_date";
+                          /** SS DATE keeps a date picker; EOL DATE is free-form text. */
+                          const isDate = stdKey === "ss_date";
                           if (stdKey === "owner" || stdKey === "project_owner") {
                             const selected = ownerSelectValue(value);
                             const orphan =

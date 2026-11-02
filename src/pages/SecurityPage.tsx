@@ -1558,7 +1558,7 @@ function CycleFormModal({
             <input
               value={projQuery}
               onChange={(e) => setProjQuery(e.target.value)}
-              placeholder="Search project code, name, platform or BIOS ID..."
+              placeholder="Search project code, name, platform or MTCODE..."
             />
           </label>
           <ul className="sec-project-checklist">

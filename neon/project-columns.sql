@@ -103,7 +103,7 @@ select
     '__kssw_column_defs',
     '[
       {"id":"00000000-0000-4000-8000-0000000000d1","label":"LENOVO PROJECT NAME","sort_order":0},
-      {"id":"00000000-0000-4000-8000-0000000000d2","label":"BIOS ID","sort_order":1},
+      {"id":"00000000-0000-4000-8000-0000000000d2","label":"MTCODE","sort_order":1},
       {"id":"00000000-0000-4000-8000-0000000000d3","label":"PLATFORM","sort_order":2},
       {"id":"00000000-0000-4000-8000-0000000000d5","label":"SS DATE","sort_order":3},
       {"id":"00000000-0000-4000-8000-0000000000d6","label":"EOL DATE","sort_order":4},

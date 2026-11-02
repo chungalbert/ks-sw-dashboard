@@ -22,8 +22,9 @@ export const PROJECT_STANDARD_COLUMNS = [
     id: "00000000-0000-4000-8000-0000000000d1",
   },
   {
+    /** Neon / API field stays `bios_id`; UI label is MTCODE. */
     key: "bios_id",
-    label: "BIOS ID",
+    label: "MTCODE",
     id: "00000000-0000-4000-8000-0000000000d2",
   },
   {
@@ -127,6 +128,9 @@ const PROJECT_OWNER_LABEL_ALIASES = new Set(["OWNER"]);
  */
 const TPE_OWNER_LABEL_ALIASES = new Set(["TPE OWNER", "TPE_OWNER", "TPEOWNER"]);
 
+/** Legacy + current labels for MTCODE (`projects.bios_id`). */
+const MTCODE_LABEL_ALIASES = new Set(["MTCODE", "MT CODE", "MT_CODE", "BIOS ID", "BIOSID", "BIOS_ID"]);
+
 /** @deprecated Prefer PROJECT_LOCKED_COLUMN + PROJECT_STANDARD_COLUMNS; kept for callers that list all field keys. */
 export const PROJECT_BUILTIN_COLUMNS = [
   PROJECT_LOCKED_COLUMN,
@@ -183,6 +187,9 @@ export function findStandardProjectColumn(
   }
   if (PROJECT_OWNER_LABEL_ALIASES.has(upper) || normalizeLabel("Owner") === upper) {
     return PROJECT_STANDARD_COLUMNS.find((col) => col.key === "project_owner");
+  }
+  if (MTCODE_LABEL_ALIASES.has(upper)) {
+    return PROJECT_STANDARD_COLUMNS.find((col) => col.key === "bios_id");
   }
   return PROJECT_STANDARD_COLUMNS.find((col) => normalizeLabel(col.label) === upper);
 }
