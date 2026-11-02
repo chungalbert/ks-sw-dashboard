@@ -38,8 +38,13 @@ create table if not exists public.projects (
   tpe_owner text not null default '',
   custom jsonb not null default '{}'::jsonb,
   -- Handover CheckPoints (Actions column). Incremental DBs: neon/project-checkpoints.sql.
-  checkpoints jsonb not null default '[]'::jsonb
+  checkpoints jsonb not null default '[]'::jsonb,
+  -- Shared display order (Projects & Issues + Security). Incremental: neon/project-sort-order.sql.
+  sort_order integer not null default 0
 );
+
+create index if not exists projects_sort_order_idx
+  on public.projects (sort_order, created_at);
 
 create table if not exists public.project_columns (
   id uuid primary key default gen_random_uuid(),

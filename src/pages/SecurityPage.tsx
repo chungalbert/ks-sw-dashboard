@@ -26,6 +26,7 @@ import {
 } from "../lib/securityTypes";
 import { useSaveStatus } from "../lib/useSaveStatus";
 import { PROJECT_COLUMNS_META_NAME } from "../lib/cloudApi";
+import { projectSortOrderValue, sortedProjectsBySortOrder } from "../lib/projects";
 import {
   canEditSecurityIssueTracking,
   canManageSecurityStructure,
@@ -96,8 +97,16 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
   const [detailLoading, setDetailLoading] = useState(false);
 
   const visibleProjects = useMemo(
-    () => projects.filter((p) => p.name !== PROJECT_COLUMNS_META_NAME),
+    () =>
+      sortedProjectsBySortOrder(
+        projects.filter((p) => p.name !== PROJECT_COLUMNS_META_NAME),
+      ),
     [projects],
+  );
+
+  const projectById = useMemo(
+    () => new Map(visibleProjects.map((p) => [p.id, p])),
+    [visibleProjects],
   );
 
   const projectPickerOptions = useMemo(
@@ -182,16 +191,19 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
 
   const cycleRoster = useMemo(() => {
     if (!snap || !activeCycle) return [] as SecurityRosterEntry[];
-    // Stable order: roster sort_order (cycle project order), then Compal name.
+    // Follow shared projects.sort_order (same numbering as Projects & Issues), then Compal name.
     // Do not re-sort by Wave when a row's Wave changes.
     const rows = snap.roster
       .filter((r) => r.cycle_id === activeCycle.id)
       .slice()
-      .sort(
-        (a, b) =>
-          a.sort_order - b.sort_order ||
-          a.project_name.localeCompare(b.project_name, undefined, { sensitivity: "base" }),
-      );
+      .sort((a, b) => {
+        const ao = projectSortOrderValue(projectById.get(a.project_id), a.sort_order);
+        const bo = projectSortOrderValue(projectById.get(b.project_id), b.sort_order);
+        return (
+          ao - bo ||
+          a.project_name.localeCompare(b.project_name, undefined, { sensitivity: "base" })
+        );
+      });
     const q = query.trim().toLowerCase();
     if (!q) return rows;
     return rows.filter(
@@ -205,7 +217,7 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
         r.pm_owner.toLowerCase().includes(q) ||
         r.dqa_owner.toLowerCase().includes(q),
     );
-  }, [snap, activeCycle, query, profileName]);
+  }, [snap, activeCycle, query, profileName, projectById]);
 
   const activeCycleWaveCount = useMemo(
     () =>
