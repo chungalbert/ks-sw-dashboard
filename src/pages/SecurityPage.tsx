@@ -137,19 +137,30 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
     try {
       const next = await securityStore.load();
       // Keep roster Status aligned with saved Project Release Tracking; cache release for chips.
+      // Also heal Issue Summary project_ids/names from cycle-detail apply cells (KS-55).
       let roster = next.roster;
+      let issues = next.issues;
       const releases: Record<string, CycleReleaseTracking> = {};
+      const detailsByCycleId: Record<string, CycleDetailDoc> = {};
       for (const c of next.cycles) {
         const detail = await securityStore.loadCycleDetail(c.id);
         if (!detail) continue;
         releases[c.id] = detail.release;
+        detailsByCycleId[c.id] = detail;
         const updates = await securityStore.syncRosterStatusesFromRelease(c.id, detail.release);
         if (updates.length === 0) continue;
         const byId = new Map(updates.map((r) => [r.id, r]));
         roster = roster.map((r) => byId.get(r.id) ?? r);
       }
+      if (Object.keys(detailsByCycleId).length > 0) {
+        const issueUpdates = await securityStore.syncIssueProjectsFromDetails(detailsByCycleId);
+        if (issueUpdates.length > 0) {
+          const byId = new Map(issueUpdates.map((i) => [i.id, i]));
+          issues = issues.map((i) => byId.get(i.id) ?? i);
+        }
+      }
       setReleaseByCycleId(releases);
-      setSnap({ ...next, roster });
+      setSnap({ ...next, roster, issues });
       setActiveCycleId((prev) => {
         if (prev && next.cycles.some((c) => c.id === prev)) return prev;
         return next.cycles[0]?.id ?? null;
@@ -490,7 +501,7 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
                 setReleaseByCycleId((prev) => ({ ...prev, [doc.cycle_id]: doc.release }));
               }}
               onSave={async (doc, opts) => {
-                const { saved, rosterUpdates } = await runSave(async () => {
+                const { saved, rosterUpdates, issueUpdates } = await runSave(async () => {
                   const savedDoc = await securityStore.saveCycleDetail(doc, {
                     force: opts?.force,
                   });
@@ -498,17 +509,41 @@ export function SecurityPage({ onGoDashboard }: { onGoDashboard?: () => void }) 
                     savedDoc.cycle_id,
                     savedDoc.release,
                   );
-                  return { saved: savedDoc, rosterUpdates: updates };
+                  // Merge this save with other cached cycle details so multi-cycle
+                  // Issue Summary project lists stay accurate.
+                  const detailsByCycleId: Record<string, CycleDetailDoc> = {
+                    [savedDoc.cycle_id]: savedDoc,
+                  };
+                  for (const c of cycles) {
+                    if (c.id === savedDoc.cycle_id) continue;
+                    const other = await securityStore.loadCycleDetail(c.id);
+                    if (other) detailsByCycleId[c.id] = other;
+                  }
+                  const syncedIssues =
+                    await securityStore.syncIssueProjectsFromDetails(detailsByCycleId);
+                  return {
+                    saved: savedDoc,
+                    rosterUpdates: updates,
+                    issueUpdates: syncedIssues,
+                  };
                 });
                 setDetailDoc(saved);
                 setReleaseByCycleId((prev) => ({ ...prev, [saved.cycle_id]: saved.release }));
-                if (rosterUpdates.length > 0) {
-                  const byId = new Map(rosterUpdates.map((r) => [r.id, r]));
+                if (rosterUpdates.length > 0 || issueUpdates.length > 0) {
+                  const rosterById = new Map(rosterUpdates.map((r) => [r.id, r]));
+                  const issueById = new Map(issueUpdates.map((i) => [i.id, i]));
                   setSnap((prev) =>
                     prev
                       ? {
                           ...prev,
-                          roster: prev.roster.map((r) => byId.get(r.id) ?? r),
+                          roster:
+                            rosterUpdates.length > 0
+                              ? prev.roster.map((r) => rosterById.get(r.id) ?? r)
+                              : prev.roster,
+                          issues:
+                            issueUpdates.length > 0
+                              ? prev.issues.map((i) => issueById.get(i.id) ?? i)
+                              : prev.issues,
                         }
                       : prev,
                   );
