@@ -22,6 +22,8 @@ import {
 import { useSaveStatus } from "../lib/useSaveStatus";
 import { testReportsStore } from "../lib/testReportsStore";
 
+const UNASSIGNED_ID = "__unassigned__";
+
 export function TestReportsPage({ onGoDashboard }: { onGoDashboard?: () => void }) {
   const { user } = useAuth();
   const { projects, initialLoading } = useStore();
@@ -30,9 +32,10 @@ export function TestReportsPage({ onGoDashboard }: { onGoDashboard?: () => void 
   const [rows, setRows] = useState<TestReport[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState("");
-  const [projectFilter, setProjectFilter] = useState<string>("all");
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [query, setQuery] = useState("");
+  const [projectSearch, setProjectSearch] = useState("");
   const [tokenDraft, setTokenDraft] = useState("");
   const [tokenSaved, setTokenSaved] = useState(() => hasGithubUploadToken());
   const [uploadingId, setUploadingId] = useState<string | null>(null);
@@ -59,10 +62,67 @@ export function TestReportsPage({ onGoDashboard }: { onGoDashboard?: () => void 
     });
   }, [allowed]);
 
-  const visible = useMemo(() => {
+  const reportCountByProject = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const row of rows) {
+      const key = row.project_id || UNASSIGNED_ID;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    return counts;
+  }, [rows]);
+
+  const projectCards = useMemo(() => {
+    const q = projectSearch.trim().toLowerCase();
+    const cards: { id: string; compal: string; lenovo: string; count: number }[] =
+      projectOptions
+        .map((project) => ({
+          id: project.id,
+          compal: project.name,
+          lenovo: project.lenovo_name?.trim() || "",
+          count: reportCountByProject.get(project.id) ?? 0,
+        }))
+        .filter((card) => {
+          if (!q) return true;
+          return (
+            card.compal.toLowerCase().includes(q) ||
+            card.lenovo.toLowerCase().includes(q)
+          );
+        });
+
+    const unassignedCount = reportCountByProject.get(UNASSIGNED_ID) ?? 0;
+    if (unassignedCount > 0 && (!q || "unassigned".includes(q) || "未指定".includes(q))) {
+      cards.push({
+        id: UNASSIGNED_ID,
+        compal: "Unassigned",
+        lenovo: "No project linked",
+        count: unassignedCount,
+      });
+    }
+    return cards;
+  }, [projectOptions, projectSearch, reportCountByProject]);
+
+  const selectedProject = useMemo(() => {
+    if (!selectedProjectId || selectedProjectId === UNASSIGNED_ID) return null;
+    return projectOptions.find((p) => p.id === selectedProjectId) ?? null;
+  }, [selectedProjectId, projectOptions]);
+
+  const selectedLabel = useMemo(() => {
+    if (!selectedProjectId) return "";
+    if (selectedProjectId === UNASSIGNED_ID) return "Unassigned";
+    if (!selectedProject) return "Project";
+    const lenovo = selectedProject.lenovo_name?.trim();
+    return lenovo ? `${selectedProject.name} · ${lenovo}` : selectedProject.name;
+  }, [selectedProjectId, selectedProject]);
+
+  const projectRows = useMemo(() => {
+    if (!selectedProjectId) return [];
     const q = query.trim().toLowerCase();
     return rows.filter((row) => {
-      if (projectFilter !== "all" && row.project_id !== projectFilter) return false;
+      if (selectedProjectId === UNASSIGNED_ID) {
+        if (row.project_id) return false;
+      } else if (row.project_id !== selectedProjectId) {
+        return false;
+      }
       if (typeFilter !== "all" && row.report_type !== typeFilter) return false;
       if (!q) return true;
       const hay = [
@@ -81,7 +141,7 @@ export function TestReportsPage({ onGoDashboard }: { onGoDashboard?: () => void 
         .toLowerCase();
       return hay.includes(q);
     });
-  }, [rows, projectFilter, typeFilter, query]);
+  }, [rows, selectedProjectId, typeFilter, query]);
 
   const patchRow = async (id: string, patch: Parameters<typeof testReportsStore.update>[1]) => {
     setError("");
@@ -116,17 +176,15 @@ export function TestReportsPage({ onGoDashboard }: { onGoDashboard?: () => void 
   };
 
   const onAdd = async () => {
+    if (!selectedProjectId || selectedProjectId === UNASSIGNED_ID) return;
     setError("");
     try {
       await runSave(async () => {
         const created = await testReportsStore.create({
           report_date: new Date().toISOString().slice(0, 10),
           owner: user?.display_name || user?.username || "",
-          project_id: projectFilter !== "all" ? projectFilter : null,
-          project_name:
-            projectFilter !== "all"
-              ? projectOptions.find((p) => p.id === projectFilter)?.name ?? ""
-              : "",
+          project_id: selectedProjectId,
+          project_name: selectedProject?.name ?? "",
         });
         setRows((prev) => [...prev, created]);
       });
@@ -146,18 +204,6 @@ export function TestReportsPage({ onGoDashboard }: { onGoDashboard?: () => void 
     } catch (err) {
       setError(err instanceof Error ? err.message : "Delete failed");
     }
-  };
-
-  const onProjectChange = async (row: TestReport, projectId: string) => {
-    if (!projectId) {
-      await patchRow(row.id, { project_id: null, project_name: "" });
-      return;
-    }
-    const project = projectOptions.find((p) => p.id === projectId);
-    await patchRow(row.id, {
-      project_id: projectId,
-      project_name: project?.name ?? "",
-    });
   };
 
   const openLink = (raw: string) => {
@@ -202,6 +248,13 @@ export function TestReportsPage({ onGoDashboard }: { onGoDashboard?: () => void 
     }
   };
 
+  const backToProjects = () => {
+    setSelectedProjectId(null);
+    setTypeFilter("all");
+    setQuery("");
+    setError("");
+  };
+
   if (!allowed) {
     return (
       <section className="wl-page">
@@ -238,6 +291,62 @@ export function TestReportsPage({ onGoDashboard }: { onGoDashboard?: () => void 
     );
   }
 
+  /* —— Project cards (primary) —— */
+  if (!selectedProjectId) {
+    return (
+      <section className="wl-page">
+        <div className="wl-toolbar">
+          <nav className="wl-breadcrumb" aria-label="Breadcrumb">
+            <button type="button" className="wl-bc-home" onClick={onGoDashboard}>
+              DASHBOARD
+            </button>
+            <span className="wl-bc-sep">›</span>
+            <span className="wl-bc-current">Test Reports</span>
+          </nav>
+          <div className="wl-toolbar-actions">
+            <label className="wl-search">
+              <span className="sr-only">Search projects</span>
+              <input
+                value={projectSearch}
+                onChange={(e) => setProjectSearch(e.target.value)}
+                placeholder="Search projects…"
+                aria-label="Search projects"
+              />
+            </label>
+          </div>
+        </div>
+
+        {error && <p className="wl-error">{error}</p>}
+        <SavingIndicator status={saveStatus} />
+
+        <p className="tr-grid-hint">Select a project to add or manage its test reports.</p>
+
+        {projectCards.length === 0 ? (
+          <p className="wl-empty tr-grid-empty">No projects yet. Create one under Projects &amp; Issues.</p>
+        ) : (
+          <div className="tr-project-grid" role="list">
+            {projectCards.map((card) => (
+              <button
+                key={card.id}
+                type="button"
+                className="tr-project-card"
+                role="listitem"
+                onClick={() => setSelectedProjectId(card.id)}
+              >
+                <span className="tr-project-compal">{card.compal}</span>
+                {card.lenovo ? <span className="tr-project-lenovo">{card.lenovo}</span> : null}
+                <span className="tr-project-count">
+                  {card.count === 0 ? "No reports" : `${card.count} report${card.count === 1 ? "" : "s"}`}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+      </section>
+    );
+  }
+
+  /* —— Per-project report list —— */
   return (
     <section className="wl-page">
       <div className="wl-toolbar">
@@ -246,20 +355,13 @@ export function TestReportsPage({ onGoDashboard }: { onGoDashboard?: () => void 
             DASHBOARD
           </button>
           <span className="wl-bc-sep">›</span>
-          <span className="wl-bc-current">Test Reports</span>
+          <button type="button" className="wl-bc-link" onClick={backToProjects}>
+            Test Reports
+          </button>
+          <span className="wl-bc-sep">›</span>
+          <span className="wl-bc-current">{selectedLabel}</span>
         </nav>
         <div className="wl-toolbar-actions">
-          <label className="wl-filter">
-            <span>Project</span>
-            <select value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)}>
-              <option value="all">All</option>
-              {projectOptions.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-          </label>
           <label className="wl-filter">
             <span>Type</span>
             <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
@@ -280,9 +382,11 @@ export function TestReportsPage({ onGoDashboard }: { onGoDashboard?: () => void 
               aria-label="Search Test Reports"
             />
           </label>
-          <button type="button" className="pi-btn-primary" onClick={() => void onAdd()}>
-            + Add row
-          </button>
+          {selectedProjectId !== UNASSIGNED_ID ? (
+            <button type="button" className="pi-btn-primary" onClick={() => void onAdd()}>
+              + Add Report
+            </button>
+          ) : null}
         </div>
       </div>
 
@@ -317,7 +421,6 @@ export function TestReportsPage({ onGoDashboard }: { onGoDashboard?: () => void 
         <table className="wl-table">
           <thead>
             <tr>
-              <th scope="col">Project</th>
               <th scope="col">BIOS</th>
               <th scope="col">OS / Image</th>
               <th scope="col">Report Type</th>
@@ -329,30 +432,17 @@ export function TestReportsPage({ onGoDashboard }: { onGoDashboard?: () => void 
             </tr>
           </thead>
           <tbody>
-            {visible.length === 0 ? (
+            {projectRows.length === 0 ? (
               <tr>
-                <td colSpan={9} className="wl-empty">
-                  No Test Report rows yet. Click + Add row.
+                <td colSpan={8} className="wl-empty">
+                  {selectedProjectId === UNASSIGNED_ID
+                    ? "No unassigned reports."
+                    : "No reports for this project yet. Click + Add Report."}
                 </td>
               </tr>
             ) : (
-              visible.map((row) => (
+              projectRows.map((row) => (
                 <tr key={row.id} className={row.result === "PASS" ? "is-done" : undefined}>
-                  <td>
-                    <select
-                      className="wl-input"
-                      value={row.project_id ?? ""}
-                      aria-label="Project"
-                      onChange={(e) => void onProjectChange(row, e.target.value)}
-                    >
-                      <option value="">—</option>
-                      {projectOptions.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
                   <td>
                     <input
                       className="wl-input"
