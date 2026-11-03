@@ -3,7 +3,8 @@ import {
   ISSUE_TRACKING_FIELDS,
   ISSUE_TRACKING_LABELS,
   ISSUE_TRACKING_RD_FIELDS,
-  ISSUE_TRACKING_STATUS_OPTIONS,
+  issueTrackingStatusOptionsFor,
+  normalizeIssueTrackingStatus,
   type IssueTrackingField,
   type SecurityIssueTrackingRow,
 } from "../lib/securityIssueTracking";
@@ -95,7 +96,8 @@ export function IssueTrackingSummaryPanel({
 
   const cellValue = (row: SecurityIssueTrackingRow, field: IssueTrackingField): string => {
     const draft = drafts[row.id]?.[field];
-    return draft !== undefined ? draft : (row[field] ?? "");
+    const raw = draft !== undefined ? draft : (row[field] ?? "");
+    return field === "status" ? normalizeIssueTrackingStatus(raw) : raw;
   };
 
   const setCellDraft = (rowId: string, field: IssueTrackingField, value: string) => {
@@ -263,7 +265,7 @@ export function IssueTrackingSummaryPanel({
                     key={field}
                     className={
                       field === "status"
-                        ? "is-status"
+                        ? "is-dqa is-status"
                         : ISSUE_TRACKING_RD_FIELDS.includes(field)
                           ? "is-rd"
                           : "is-dqa"
@@ -294,9 +296,17 @@ export function IssueTrackingSummaryPanel({
                       const value = cellValue(row, field);
                       const cellKey = `${row.id}:${field}`;
                       const isSaving = savingCell === cellKey;
-                      const statusOptions = Array.from(
-                        new Set([...ISSUE_TRACKING_STATUS_OPTIONS, value].filter((v) => v !== undefined)),
-                      );
+                      const statusOptions = issueTrackingStatusOptionsFor(value);
+                      const statusClass =
+                        value === "PASS"
+                          ? " is-pass"
+                          : value === "Fail"
+                            ? " is-fail"
+                            : value === "Fixed"
+                              ? " is-fixed"
+                              : value === "Cancelled"
+                                ? " is-cancelled"
+                                : "";
                       return (
                         <td
                           key={field}
@@ -311,14 +321,13 @@ export function IssueTrackingSummaryPanel({
                           {canEditContent ? (
                             field === "status" ? (
                               <select
-                                className={`sec-it-cell sec-it-status-select${isSaving ? " is-saving" : ""}${
-                                  value.toUpperCase() === "PASS" ? " is-pass" : ""
-                                }`}
+                                className={`sec-it-status-select${isSaving ? " is-saving" : ""}${statusClass}`}
                                 value={value}
                                 aria-label={`Status · ${row.project_name} · ${row.defect_id || row.no || "row"}`}
                                 onChange={(e) => {
-                                  setCellDraft(row.id, field, e.target.value);
-                                  void patchCell(row.id, field, e.target.value);
+                                  const next = normalizeIssueTrackingStatus(e.target.value);
+                                  setCellDraft(row.id, field, next);
+                                  void patchCell(row.id, field, next);
                                 }}
                               >
                                 {statusOptions.map((opt) => (
@@ -344,10 +353,10 @@ export function IssueTrackingSummaryPanel({
                           ) : (
                             <span
                               className={`sec-it-readonly${
-                                field === "status" && value.toUpperCase() === "PASS" ? " is-pass" : ""
+                                field === "status" ? statusClass : ""
                               }`}
                             >
-                              {row[field] || "—"}
+                              {(field === "status" ? value : row[field]) || "—"}
                             </span>
                           )}
                         </td>

@@ -24,9 +24,10 @@ import {
   nowStamp,
   projectIdsWithApplyStatus,
 } from "./cycleDetailTypes";
-import type {
-  SecurityIssueTrackingInput,
-  SecurityIssueTrackingRow,
+import {
+  normalizeIssueTrackingStatus,
+  type SecurityIssueTrackingInput,
+  type SecurityIssueTrackingRow,
 } from "./securityIssueTracking";
 import type {
   NewCycleInput,
@@ -1165,7 +1166,7 @@ export const securityStore = {
       roster_id: input.roster_id,
       project_id: input.project_id ?? "",
       project_name: input.project_name ?? "",
-      status: input.status ?? "",
+      status: normalizeIssueTrackingStatus(input.status ?? ""),
       task: input.task ?? "",
       issue_date: input.issue_date ?? "",
       no: input.no ?? "",
@@ -1207,7 +1208,11 @@ export const securityStore = {
     const all = loadLocalTracking();
     const idx = all.findIndex((r) => r.id === id);
     if (idx < 0) throw new Error("Issue tracking row not found");
-    const next = { ...all[idx], ...patch, updated_at: new Date().toISOString() };
+    const merged = { ...patch };
+    if (merged.status !== undefined) {
+      merged.status = normalizeIssueTrackingStatus(merged.status);
+    }
+    const next = { ...all[idx], ...merged, updated_at: new Date().toISOString() };
     all[idx] = next;
     saveLocalTracking(all);
     return next;

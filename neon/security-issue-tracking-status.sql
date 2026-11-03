@@ -6,6 +6,6 @@ alter table public.security_issue_tracking
   add column if not exists status text not null default '';
 
 comment on column public.security_issue_tracking.status is
-  'Issue Tracking Status (PASS / Fail / blank). PASS keeps historical rows visible.';
+  'Issue Tracking Status (Fail / Fixed / PASS / Cancelled / blank). PASS keeps historical rows visible.';
 
 notify pgrst, 'reload schema';

@@ -9,7 +9,7 @@ create table if not exists public.security_issue_tracking (
   roster_id uuid not null references public.security_roster(id) on delete cascade,
   project_id text not null default '',
   project_name text not null default '',
-  /** PASS / Fail / blank — PASS reports keep historical rows; never drop on Cover PASS. */
+  /** Fail / Fixed / PASS / Cancelled / blank — PASS reports keep historical rows; never drop on Cover PASS. */
   status text not null default '',
   task text not null default '',
   /** Display date string (e.g. 9/18/2026 or ISO). */
