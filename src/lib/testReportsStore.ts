@@ -63,6 +63,8 @@ export const testReportsStore = {
         os_image: partial?.os_image ?? "",
         report_type: partial?.report_type ?? "",
         link: partial?.link ?? "",
+        file_path: partial?.file_path ?? "",
+        file_name: partial?.file_name ?? "",
         report_date: partial?.report_date ?? "",
         owner: partial?.owner ?? "",
         result: partial?.result ?? "",

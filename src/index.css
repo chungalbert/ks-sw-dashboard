@@ -7926,7 +7926,7 @@ input.sec-detail-date-input[type="date"]:invalid::-webkit-datetime-edit-day-fiel
   background: #202124;
   color: #e8eaed;
 }
-.tr-link-cell { min-width: 160px; }
+.tr-link-cell { min-width: 220px; }
 .tr-link-row {
   display: flex;
   align-items: center;
@@ -7936,3 +7936,64 @@ input.sec-detail-date-input[type="date"]:invalid::-webkit-datetime-edit-day-fiel
   flex-shrink: 0;
   font-size: 11px;
 }
+.tr-file-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 200px;
+}
+.tr-upload-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.tr-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+}
+.tr-upload-btn {
+  padding: 4px 10px !important;
+  font-size: 11px !important;
+  border-radius: 6px !important;
+}
+.tr-file-name {
+  font-size: 11px;
+  color: #8ab4f8;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tr-file-hint {
+  font-size: 11px;
+  color: #9aa0a6;
+}
+.tr-token-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid #5f6368;
+  border-radius: 8px;
+  background: #1f2023;
+  font-size: 12px;
+  color: #9aa0a6;
+}
+.tr-token-label { color: #e8eaed; font-weight: 600; }
+.tr-token-input {
+  flex: 1;
+  min-width: 180px;
+  border: 1px solid #5f6368;
+  background: #131314;
+  color: #e8eaed;
+  border-radius: 6px;
+  padding: 5px 8px;
+  font: inherit;
+}
+.tr-token-hint { opacity: 0.75; }

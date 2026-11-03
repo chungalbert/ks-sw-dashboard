@@ -12,6 +12,9 @@ create table if not exists public.test_reports (
   os_image text not null default '',
   report_type text not null default '',
   link text not null default '',
+  -- file_path: repo-relative GitHub path after Contents upload (public/test-reports/...).
+  file_path text not null default '',
+  file_name text not null default '',
   report_date text not null default '',
   owner text not null default '',
   result text not null default ''

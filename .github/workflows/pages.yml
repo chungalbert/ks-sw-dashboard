@@ -33,11 +33,18 @@ jobs:
           VITE_NEON_URL: ${{ secrets.VITE_NEON_URL || 'https://ep-divine-meadow-azqo19a2.c-3.ap-southeast-1.aws.neon.tech/neondb' }}
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          # Optional Test Reports GitHub upload token (public in SPA — prefer session paste).
+          VITE_GH_UPLOAD_TOKEN: ${{ secrets.VITE_GH_UPLOAD_TOKEN }}
+          VITE_GITHUB_REPO: ${{ vars.VITE_GITHUB_REPO || 'chungalbert/ks-sw-dashboard' }}
+          VITE_GITHUB_BRANCH: ${{ vars.VITE_GITHUB_BRANCH || 'main' }}
       - run: npm run build
         env:
           VITE_NEON_URL: ${{ secrets.VITE_NEON_URL || 'https://ep-divine-meadow-azqo19a2.c-3.ap-southeast-1.aws.neon.tech/neondb' }}
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_GH_UPLOAD_TOKEN: ${{ secrets.VITE_GH_UPLOAD_TOKEN }}
+          VITE_GITHUB_REPO: ${{ vars.VITE_GITHUB_REPO || 'chungalbert/ks-sw-dashboard' }}
+          VITE_GITHUB_BRANCH: ${{ vars.VITE_GITHUB_BRANCH || 'main' }}
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

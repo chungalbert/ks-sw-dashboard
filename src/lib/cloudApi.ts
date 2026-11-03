@@ -2167,6 +2167,8 @@ export const cloudApi = {
       os_image: partial.os_image ?? "",
       report_type: normalizeTestReportType(partial.report_type),
       link: partial.link ?? "",
+      file_path: (partial.file_path ?? "").trim(),
+      file_name: (partial.file_name ?? "").trim(),
       report_date: partial.report_date ?? "",
       owner: (partial.owner ?? "").trim(),
       result: normalizeTestReportResult(partial.result),
@@ -2187,6 +2189,8 @@ export const cloudApi = {
     if (patch.os_image !== undefined) updates.os_image = patch.os_image;
     if (patch.report_type !== undefined) updates.report_type = normalizeTestReportType(patch.report_type);
     if (patch.link !== undefined) updates.link = patch.link;
+    if (patch.file_path !== undefined) updates.file_path = patch.file_path.trim();
+    if (patch.file_name !== undefined) updates.file_name = patch.file_name.trim();
     if (patch.report_date !== undefined) updates.report_date = patch.report_date;
     if (patch.owner !== undefined) updates.owner = patch.owner.trim();
     if (patch.result !== undefined) updates.result = normalizeTestReportResult(patch.result);
@@ -2254,6 +2258,8 @@ function mapTestReport(row: Record<string, unknown>): TestReport {
     os_image: typeof row.os_image === "string" ? row.os_image : "",
     report_type: normalizeTestReportType(row.report_type),
     link: typeof row.link === "string" ? row.link : "",
+    file_path: typeof row.file_path === "string" ? row.file_path : "",
+    file_name: typeof row.file_name === "string" ? row.file_name : "",
     report_date: typeof row.report_date === "string" ? row.report_date : "",
     owner: typeof row.owner === "string" ? row.owner : "",
     result: normalizeTestReportResult(row.result),

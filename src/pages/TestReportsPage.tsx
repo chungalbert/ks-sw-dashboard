@@ -1,7 +1,14 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { SavingIndicator } from "../components/SavingIndicator";
 import { useAuth } from "../context/AuthContext";
 import { useStore } from "../context/StoreContext";
+import {
+  getGithubUploadToken,
+  hasGithubUploadToken,
+  setGithubUploadTokenSession,
+  TEST_REPORT_UPLOAD_EXT,
+  uploadTestReportFile,
+} from "../lib/githubReportStorage";
 import { normalizeNoteHref } from "../lib/notesStore";
 import {
   canViewTestReports,
@@ -26,12 +33,18 @@ export function TestReportsPage({ onGoDashboard }: { onGoDashboard?: () => void 
   const [projectFilter, setProjectFilter] = useState<string>("all");
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [query, setQuery] = useState("");
+  const [tokenDraft, setTokenDraft] = useState("");
+  const [tokenSaved, setTokenSaved] = useState(() => hasGithubUploadToken());
+  const [uploadingId, setUploadingId] = useState<string | null>(null);
+  const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const { saveStatus, runSave } = useSaveStatus();
 
   const projectOptions = useMemo(
     () => [...projects].sort((a, b) => a.name.localeCompare(b.name, "en")),
     [projects],
   );
+
+  const acceptAttr = TEST_REPORT_UPLOAD_EXT.join(",");
 
   const refresh = async () => {
     setRows(await testReportsStore.list());
@@ -58,6 +71,8 @@ export function TestReportsPage({ onGoDashboard }: { onGoDashboard?: () => void 
         row.os_image,
         row.report_type,
         row.link,
+        row.file_path,
+        row.file_name,
         row.report_date,
         row.owner,
         row.result,
@@ -77,11 +92,12 @@ export function TestReportsPage({ onGoDashboard }: { onGoDashboard?: () => void 
           prev.map((r) => {
             if (r.id !== id) return r;
             const merged = { ...updated };
-            // Keep local fields that were not part of this patch (still being edited).
             if (patch.bios === undefined) merged.bios = r.bios;
             if (patch.os_image === undefined) merged.os_image = r.os_image;
             if (patch.report_type === undefined) merged.report_type = r.report_type;
             if (patch.link === undefined) merged.link = r.link;
+            if (patch.file_path === undefined) merged.file_path = r.file_path;
+            if (patch.file_name === undefined) merged.file_name = r.file_name;
             if (patch.report_date === undefined) merged.report_date = r.report_date;
             if (patch.owner === undefined) merged.owner = r.owner;
             if (patch.result === undefined) merged.result = r.result;
@@ -148,6 +164,42 @@ export function TestReportsPage({ onGoDashboard }: { onGoDashboard?: () => void 
     const href = normalizeNoteHref(raw);
     if (!href) return;
     window.open(href, "_blank", "noopener,noreferrer");
+  };
+
+  const saveToken = () => {
+    setGithubUploadTokenSession(tokenDraft);
+    setTokenSaved(hasGithubUploadToken());
+    setTokenDraft("");
+    setError("");
+  };
+
+  const clearToken = () => {
+    setGithubUploadTokenSession("");
+    setTokenSaved(hasGithubUploadToken());
+    setTokenDraft("");
+  };
+
+  const onUploadFile = async (row: TestReport, file: File | null | undefined) => {
+    if (!file) return;
+    setError("");
+    setUploadingId(row.id);
+    try {
+      await runSave(async () => {
+        const uploaded = await uploadTestReportFile({ reportId: row.id, file });
+        const updated = await testReportsStore.update(row.id, {
+          link: uploaded.link,
+          file_path: uploaded.file_path,
+          file_name: uploaded.file_name,
+        });
+        setRows((prev) => prev.map((r) => (r.id === row.id ? { ...r, ...updated } : r)));
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploadingId(null);
+      const input = fileInputRefs.current[row.id];
+      if (input) input.value = "";
+    }
   };
 
   if (!allowed) {
@@ -234,6 +286,30 @@ export function TestReportsPage({ onGoDashboard }: { onGoDashboard?: () => void 
         </div>
       </div>
 
+      <div className="tr-token-bar" aria-label="GitHub upload token">
+        <span className="tr-token-label">
+          GitHub token {tokenSaved || getGithubUploadToken() ? "(ready)" : "(needed for Upload)"}
+        </span>
+        <input
+          type="password"
+          className="tr-token-input"
+          value={tokenDraft}
+          onChange={(e) => setTokenDraft(e.target.value)}
+          placeholder="Fine-grained PAT · Contents Write"
+          aria-label="GitHub upload token"
+          autoComplete="off"
+        />
+        <button type="button" className="pi-linkish" onClick={saveToken}>
+          Save for tab
+        </button>
+        {(tokenSaved || getGithubUploadToken()) && (
+          <button type="button" className="pi-linkish danger" onClick={clearToken}>
+            Clear
+          </button>
+        )}
+        <span className="tr-token-hint">Stores under public/test-reports/ via Contents API</span>
+      </div>
+
       {error && <p className="wl-error">{error}</p>}
       <SavingIndicator status={saveStatus} />
 
@@ -245,7 +321,7 @@ export function TestReportsPage({ onGoDashboard }: { onGoDashboard?: () => void 
               <th scope="col">BIOS</th>
               <th scope="col">OS / Image</th>
               <th scope="col">Report Type</th>
-              <th scope="col">Link</th>
+              <th scope="col">File / Link</th>
               <th scope="col">Date</th>
               <th scope="col">Owner</th>
               <th scope="col">Result</th>
@@ -331,30 +407,60 @@ export function TestReportsPage({ onGoDashboard }: { onGoDashboard?: () => void 
                     </select>
                   </td>
                   <td className="tr-link-cell">
-                    <div className="tr-link-row">
-                      <input
-                        className="wl-input wl-content"
-                        value={row.link}
-                        aria-label="Link"
-                        placeholder="URL or host"
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          setRows((prev) =>
-                            prev.map((r) => (r.id === row.id ? { ...r, link: value } : r)),
-                          );
-                        }}
-                        onBlur={(e) => void patchRow(row.id, { link: e.target.value })}
-                      />
-                      {row.link.trim() ? (
+                    <div className="tr-file-stack">
+                      <div className="tr-link-row">
+                        <input
+                          className="wl-input wl-content"
+                          value={row.link}
+                          aria-label="Link"
+                          placeholder="URL or upload"
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            setRows((prev) =>
+                              prev.map((r) => (r.id === row.id ? { ...r, link: value } : r)),
+                            );
+                          }}
+                          onBlur={(e) => void patchRow(row.id, { link: e.target.value })}
+                        />
+                        {row.link.trim() ? (
+                          <button
+                            type="button"
+                            className="pi-linkish tr-open-link"
+                            aria-label="Open link"
+                            onClick={() => openLink(row.link)}
+                          >
+                            Open
+                          </button>
+                        ) : null}
+                      </div>
+                      <div className="tr-upload-row">
+                        <input
+                          ref={(el) => {
+                            fileInputRefs.current[row.id] = el;
+                          }}
+                          type="file"
+                          className="tr-file-input"
+                          accept={acceptAttr}
+                          aria-label="Upload report file"
+                          disabled={uploadingId === row.id}
+                          onChange={(e) => void onUploadFile(row, e.target.files?.[0])}
+                        />
                         <button
                           type="button"
-                          className="pi-linkish tr-open-link"
-                          aria-label="Open link"
-                          onClick={() => openLink(row.link)}
+                          className="pi-btn-primary tr-upload-btn"
+                          disabled={uploadingId === row.id}
+                          onClick={() => fileInputRefs.current[row.id]?.click()}
                         >
-                          Open
+                          {uploadingId === row.id ? "Uploading…" : "Upload"}
                         </button>
-                      ) : null}
+                        {row.file_name ? (
+                          <span className="tr-file-name" title={row.file_path || row.file_name}>
+                            {row.file_name}
+                          </span>
+                        ) : (
+                          <span className="tr-file-hint">pdf / xlsx / zip</span>
+                        )}
+                      </div>
                     </div>
                   </td>
                   <td>

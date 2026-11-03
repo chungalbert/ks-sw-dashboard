@@ -263,7 +263,12 @@ export interface TestReport {
   bios: string;
   os_image: string;
   report_type: TestReportType | (string & {}) | "";
+  /** Openable URL (raw GitHub after upload, or manual URL/UNC). */
   link: string;
+  /** Repo-relative path, e.g. public/test-reports/<id>/file.pdf */
+  file_path: string;
+  /** Sanitized uploaded file name (empty if link-only). */
+  file_name: string;
   /** ISO date `YYYY-MM-DD`. */
   report_date: string;
   /** Free-text owner (who ran / owns the report). */
@@ -283,6 +288,8 @@ export type TestReportPatch = Partial<{
   os_image: string;
   report_type: TestReportType | (string & {}) | "";
   link: string;
+  file_path: string;
+  file_name: string;
   report_date: string;
   owner: string;
   result: TestReportResult | "";

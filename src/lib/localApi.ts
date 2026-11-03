@@ -1047,6 +1047,8 @@ export const localApi = {
       os_image: partial.os_image ?? "",
       report_type: normalizeLocalTestReportType(partial.report_type),
       link: partial.link ?? "",
+      file_path: (partial.file_path ?? "").trim(),
+      file_name: (partial.file_name ?? "").trim(),
       report_date: partial.report_date ?? "",
       owner: (partial.owner ?? "").trim(),
       result: normalizeLocalTestReportResult(partial.result),
@@ -1076,6 +1078,8 @@ export const localApi = {
           ? normalizeLocalTestReportType(patch.report_type)
           : prev.report_type,
       link: patch.link !== undefined ? patch.link : prev.link,
+      file_path: patch.file_path !== undefined ? patch.file_path.trim() : prev.file_path,
+      file_name: patch.file_name !== undefined ? patch.file_name.trim() : prev.file_name,
       report_date: patch.report_date !== undefined ? patch.report_date : prev.report_date,
       owner: patch.owner !== undefined ? patch.owner.trim() : prev.owner,
       result:
@@ -1119,7 +1123,12 @@ function loadTestReports(): TestReport[] {
     const raw = localStorage.getItem(TEST_REPORTS_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as TestReport[];
-    return Array.isArray(parsed) ? parsed : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((row) => ({
+      ...row,
+      file_path: typeof row.file_path === "string" ? row.file_path : "",
+      file_name: typeof row.file_name === "string" ? row.file_name : "",
+    }));
   } catch {
     return [];
   }
