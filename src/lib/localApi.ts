@@ -16,6 +16,10 @@ import type {
   ProjectMember,
   Role,
   Task,
+  TestReport,
+  TestReportPatch,
+  TestReportResult,
+  TestReportType,
   WorkLogEntry,
   WorkLogEntryPatch,
   WorkLogType,
@@ -26,6 +30,8 @@ import {
   NOTE_COLORS,
   normalizePersonnelRole,
   normalizeTaskStatus,
+  TEST_REPORT_RESULTS,
+  TEST_REPORT_TYPES,
   WORK_LOG_TYPES,
 } from "./types";
 import { DEFAULT_PASSWORD, sha256, usernameFromEmail } from "./util";
@@ -34,6 +40,7 @@ const KEY = "awb-store-v1";
 const LEGACY_NOTES_KEY = "awb-notes-v1";
 const LEGACY_OTP_KEY = "awb-otp-vault-v1";
 const WORK_LOG_KEY = "kssw-work-log-v1";
+const TEST_REPORTS_KEY = "kssw-test-reports-v1";
 /** sha256(`admin:${DEFAULT_PASSWORD}`) — keep in sync with util.DEFAULT_PASSWORD. */
 const ADMIN_HASH = "c8c09b731e0fb8d16540a7edcc47927c739c09baad3adb85bdba1ab3b4fa7120";
 
@@ -1018,6 +1025,76 @@ export const localApi = {
   deleteWorkLogEntry(id: string) {
     saveWorkLog(loadWorkLog().filter((r) => r.id !== id));
   },
+
+  listTestReports(): TestReport[] {
+    return loadTestReports().sort(
+      (a, b) =>
+        a.sort_order - b.sort_order ||
+        (a.created_at ?? "").localeCompare(b.created_at ?? "") ||
+        a.id.localeCompare(b.id),
+    );
+  },
+
+  createTestReport(partial: TestReportPatch = {}): TestReport {
+    const rows = loadTestReports();
+    const maxSort = rows.reduce((m, r) => Math.max(m, r.sort_order), -1);
+    const now = new Date().toISOString();
+    const row: TestReport = {
+      id: crypto.randomUUID(),
+      project_id: partial.project_id ?? null,
+      project_name: (partial.project_name ?? "").trim(),
+      bios: partial.bios ?? "",
+      os_image: partial.os_image ?? "",
+      report_type: normalizeLocalTestReportType(partial.report_type),
+      link: partial.link ?? "",
+      file_path: (partial.file_path ?? "").trim(),
+      file_name: (partial.file_name ?? "").trim(),
+      report_date: partial.report_date ?? "",
+      owner: (partial.owner ?? "").trim(),
+      result: normalizeLocalTestReportResult(partial.result),
+      sort_order: partial.sort_order ?? maxSort + 1,
+      created_at: now,
+      updated_at: now,
+    };
+    rows.push(row);
+    saveTestReports(rows);
+    return row;
+  },
+
+  updateTestReport(id: string, patch: TestReportPatch): TestReport {
+    const rows = loadTestReports();
+    const idx = rows.findIndex((r) => r.id === id);
+    if (idx < 0) throw new Error("找不到 Test Report 列");
+    const prev = rows[idx];
+    const next: TestReport = {
+      ...prev,
+      project_id: patch.project_id !== undefined ? patch.project_id : prev.project_id,
+      project_name:
+        patch.project_name !== undefined ? patch.project_name.trim() : prev.project_name,
+      bios: patch.bios !== undefined ? patch.bios : prev.bios,
+      os_image: patch.os_image !== undefined ? patch.os_image : prev.os_image,
+      report_type:
+        patch.report_type !== undefined
+          ? normalizeLocalTestReportType(patch.report_type)
+          : prev.report_type,
+      link: patch.link !== undefined ? patch.link : prev.link,
+      file_path: patch.file_path !== undefined ? patch.file_path.trim() : prev.file_path,
+      file_name: patch.file_name !== undefined ? patch.file_name.trim() : prev.file_name,
+      report_date: patch.report_date !== undefined ? patch.report_date : prev.report_date,
+      owner: patch.owner !== undefined ? patch.owner.trim() : prev.owner,
+      result:
+        patch.result !== undefined ? normalizeLocalTestReportResult(patch.result) : prev.result,
+      sort_order: patch.sort_order !== undefined ? patch.sort_order : prev.sort_order,
+      updated_at: new Date().toISOString(),
+    };
+    rows[idx] = next;
+    saveTestReports(rows);
+    return next;
+  },
+
+  deleteTestReport(id: string) {
+    saveTestReports(loadTestReports().filter((r) => r.id !== id));
+  },
 };
 
 function loadWorkLog(): WorkLogEntry[] {
@@ -1038,6 +1115,39 @@ function saveWorkLog(rows: WorkLogEntry[]) {
 function normalizeLocalWorkLogType(raw: unknown): WorkLogType | "" {
   const value = typeof raw === "string" ? raw.trim() : "";
   if ((WORK_LOG_TYPES as readonly string[]).includes(value)) return value as WorkLogType;
+  return "";
+}
+
+function loadTestReports(): TestReport[] {
+  try {
+    const raw = localStorage.getItem(TEST_REPORTS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as TestReport[];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((row) => ({
+      ...row,
+      file_path: typeof row.file_path === "string" ? row.file_path : "",
+      file_name: typeof row.file_name === "string" ? row.file_name : "",
+    }));
+  } catch {
+    return [];
+  }
+}
+
+function saveTestReports(rows: TestReport[]) {
+  localStorage.setItem(TEST_REPORTS_KEY, JSON.stringify(rows));
+}
+
+function normalizeLocalTestReportType(raw: unknown): TestReportType | (string & {}) | "" {
+  const value = typeof raw === "string" ? raw.trim() : "";
+  if (!value) return "";
+  if ((TEST_REPORT_TYPES as readonly string[]).includes(value)) return value as TestReportType;
+  return value;
+}
+
+function normalizeLocalTestReportResult(raw: unknown): TestReportResult | "" {
+  const value = typeof raw === "string" ? raw.trim() : "";
+  if ((TEST_REPORT_RESULTS as readonly string[]).includes(value)) return value as TestReportResult;
   return "";
 }
 

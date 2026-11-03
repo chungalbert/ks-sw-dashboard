@@ -59,11 +59,22 @@ import type {
   ProjectMember,
   Role,
   Task,
+  TestReport,
+  TestReportPatch,
+  TestReportResult,
+  TestReportType,
   WorkLogEntry,
   WorkLogEntryPatch,
   WorkLogType,
 } from "./types";
-import { canManageProjectsIssues, normalizePersonnelRole, normalizeTaskStatus, WORK_LOG_TYPES } from "./types";
+import {
+  canManageProjectsIssues,
+  normalizePersonnelRole,
+  normalizeTaskStatus,
+  TEST_REPORT_RESULTS,
+  TEST_REPORT_TYPES,
+  WORK_LOG_TYPES,
+} from "./types";
 import { DEFAULT_PASSWORD, hasNeonConfig, usernameFromEmail } from "./util";
 
 /** Admin + DM + DL elevated for Projects & Issues (not Personnel Add Member). */
@@ -2133,6 +2144,71 @@ export const cloudApi = {
     const { error } = await sb().from("work_log_entries").delete().eq("id", id);
     if (error) throw error;
   },
+
+  async listTestReports(): Promise<TestReport[]> {
+    const { data, error } = await sb()
+      .from("test_reports")
+      .select("*")
+      .order("sort_order", { ascending: true })
+      .order("created_at", { ascending: true });
+    if (error) throw error;
+    return (data ?? []).map((row) => mapTestReport(row as Record<string, unknown>));
+  },
+
+  async createTestReport(partial: TestReportPatch = {}): Promise<TestReport> {
+    const me = await cloudApi.currentUser();
+    if (!me) throw new Error("尚未登入");
+    const existing = await cloudApi.listTestReports();
+    const maxSort = existing.reduce((m, r) => Math.max(m, r.sort_order), -1);
+    const payload = {
+      project_id: partial.project_id ?? null,
+      project_name: (partial.project_name ?? "").trim(),
+      bios: partial.bios ?? "",
+      os_image: partial.os_image ?? "",
+      report_type: normalizeTestReportType(partial.report_type),
+      link: partial.link ?? "",
+      file_path: (partial.file_path ?? "").trim(),
+      file_name: (partial.file_name ?? "").trim(),
+      report_date: partial.report_date ?? "",
+      owner: (partial.owner ?? "").trim(),
+      result: normalizeTestReportResult(partial.result),
+      sort_order: partial.sort_order ?? maxSort + 1,
+      created_by: me.id,
+      updated_at: new Date().toISOString(),
+    };
+    const { data, error } = await sb().from("test_reports").insert(payload).select().single();
+    if (error) throw error;
+    return mapTestReport(data as Record<string, unknown>);
+  },
+
+  async updateTestReport(id: string, patch: TestReportPatch): Promise<TestReport> {
+    const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (patch.project_id !== undefined) updates.project_id = patch.project_id;
+    if (patch.project_name !== undefined) updates.project_name = patch.project_name.trim();
+    if (patch.bios !== undefined) updates.bios = patch.bios;
+    if (patch.os_image !== undefined) updates.os_image = patch.os_image;
+    if (patch.report_type !== undefined) updates.report_type = normalizeTestReportType(patch.report_type);
+    if (patch.link !== undefined) updates.link = patch.link;
+    if (patch.file_path !== undefined) updates.file_path = patch.file_path.trim();
+    if (patch.file_name !== undefined) updates.file_name = patch.file_name.trim();
+    if (patch.report_date !== undefined) updates.report_date = patch.report_date;
+    if (patch.owner !== undefined) updates.owner = patch.owner.trim();
+    if (patch.result !== undefined) updates.result = normalizeTestReportResult(patch.result);
+    if (patch.sort_order !== undefined) updates.sort_order = patch.sort_order;
+    const { data, error } = await sb()
+      .from("test_reports")
+      .update(updates)
+      .eq("id", id)
+      .select()
+      .single();
+    if (error) throw error;
+    return mapTestReport(data as Record<string, unknown>);
+  },
+
+  async deleteTestReport(id: string): Promise<void> {
+    const { error } = await sb().from("test_reports").delete().eq("id", id);
+    if (error) throw error;
+  },
 };
 
 function normalizeWorkLogType(raw: unknown): WorkLogType | "" {
@@ -2152,6 +2228,41 @@ function mapWorkLogEntry(row: Record<string, unknown>): WorkLogEntry {
     content: typeof row.content === "string" ? row.content : "",
     owner_id: row.owner_id == null || row.owner_id === "" ? null : String(row.owner_id),
     done: Boolean(row.done),
+    sort_order: Number.isFinite(Number(row.sort_order)) ? Number(row.sort_order) : 0,
+    created_by: row.created_by == null ? null : String(row.created_by),
+    created_at: typeof row.created_at === "string" ? row.created_at : undefined,
+    updated_at: typeof row.updated_at === "string" ? row.updated_at : undefined,
+  };
+}
+
+/** Allow known v1 types plus free text so Albert can expand without a migration. */
+function normalizeTestReportType(raw: unknown): TestReportType | (string & {}) | "" {
+  const value = typeof raw === "string" ? raw.trim() : "";
+  if (!value) return "";
+  if ((TEST_REPORT_TYPES as readonly string[]).includes(value)) return value as TestReportType;
+  return value;
+}
+
+function normalizeTestReportResult(raw: unknown): TestReportResult | "" {
+  const value = typeof raw === "string" ? raw.trim() : "";
+  if ((TEST_REPORT_RESULTS as readonly string[]).includes(value)) return value as TestReportResult;
+  return "";
+}
+
+function mapTestReport(row: Record<string, unknown>): TestReport {
+  return {
+    id: String(row.id ?? ""),
+    project_id: row.project_id == null || row.project_id === "" ? null : String(row.project_id),
+    project_name: typeof row.project_name === "string" ? row.project_name : "",
+    bios: typeof row.bios === "string" ? row.bios : "",
+    os_image: typeof row.os_image === "string" ? row.os_image : "",
+    report_type: normalizeTestReportType(row.report_type),
+    link: typeof row.link === "string" ? row.link : "",
+    file_path: typeof row.file_path === "string" ? row.file_path : "",
+    file_name: typeof row.file_name === "string" ? row.file_name : "",
+    report_date: typeof row.report_date === "string" ? row.report_date : "",
+    owner: typeof row.owner === "string" ? row.owner : "",
+    result: normalizeTestReportResult(row.result),
     sort_order: Number.isFinite(Number(row.sort_order)) ? Number(row.sort_order) : 0,
     created_by: row.created_by == null ? null : String(row.created_by),
     created_at: typeof row.created_at === "string" ? row.created_at : undefined,

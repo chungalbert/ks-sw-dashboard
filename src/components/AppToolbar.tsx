@@ -7,6 +7,7 @@ const VIEW_CRUMB: Partial<Record<ViewId, string>> = {
   security: "BIOS Security Updates",
   "inv-pcr": "INV&PCR",
   "work-log": "Work Log",
+  "test-reports": "Test Reports",
   guides: "教學",
   notes: "Note",
   chat: "Chat",
