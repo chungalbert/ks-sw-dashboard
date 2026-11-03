@@ -43,11 +43,8 @@ General Information:
 UFCN32WW(V32)
 
 [Added]
-  1.Add new panel EDID and G-sync for PCR 240hz panel.
-  2.Update the battery GUID.
 
 [Modified]
-  1.Disable AER(Advanced Error Reporting) for GPU PCIE root port.
 
 [Fixed]
 1. Fix-Intel WIFI6E AX1675 Killer cannot Reinstall Windows from Cloud by WIFI.
@@ -62,8 +59,31 @@ Workaround :
 N/A
 
 Function :        
+1.  Rename – From V1.31A to V1.32A.
+
+
+UFCN30WW(V31)
+
+[Added]
+  1.Add new panel EDID and G-sync for PCR 240hz panel.
+  2.Update the battery GUID.
+
+[Modified]
+  1.Disable AER(Advanced Error Reporting) for GPU PCIE root port.
+
+
+[Fixed]
+
+[Embedded Controller]
+
+Fixed :
+N/A
+
+Workaround :
+N/A
+
+Function :        
 1.  Update power LED behavior follow power saving function.
-2.  Rename – From V1.31A to V1.32A.
 
 
 Limitation
