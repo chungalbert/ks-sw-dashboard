@@ -2,7 +2,7 @@ import { FormEvent, type MouseEvent, useEffect, useMemo, useState } from "react"
 import { SavingIndicator } from "../components/SavingIndicator";
 import { SharedStoreBanner } from "../components/SharedStoreBanner";
 import { copyTextToClipboard } from "../lib/clipboard";
-import { firstUrlInText, notesStore } from "../lib/notesStore";
+import { firstUrlInText, normalizeNoteHref, notesStore } from "../lib/notesStore";
 import { NOTE_COLORS, type NoteColor, type NoteItem } from "../lib/types";
 import { useSaveStatus } from "../lib/useSaveStatus";
 
@@ -126,7 +126,8 @@ export function NotesPage({ onGoDashboard }: { onGoDashboard?: () => void }) {
   };
 
   const onOpenLink = (note: NoteItem) => {
-    const href = note.url?.trim() || firstUrlInText(note.body);
+    const raw = note.url?.trim() || firstUrlInText(note.body) || "";
+    const href = normalizeNoteHref(raw);
     if (!href) {
       setError("No link on this note");
       return;
@@ -329,10 +330,11 @@ export function NotesPage({ onGoDashboard }: { onGoDashboard?: () => void }) {
               <label>
                 Link (optional)
                 <input
-                  type="url"
+                  type="text"
+                  inputMode="url"
                   value={form.url}
                   onChange={(e) => setForm((f) => ({ ...f, url: e.target.value }))}
-                  placeholder="https://…"
+                  placeholder="https://… or hostname"
                 />
               </label>
               <fieldset className="note-color-field">

@@ -51,6 +51,20 @@ export const notesStore = {
   },
 };
 
+/**
+ * Normalize a note Link for window.open.
+ * Accepts full URLs and bare hostnames (optional path/port/query), e.g. `tpeaiosvr.compal.com`.
+ * Prepends `https://` when no scheme is present.
+ */
+export function normalizeNoteHref(raw: string): string {
+  const s = raw.trim();
+  if (!s) return "";
+  // Require `://` (or mailto:/tel:) so `host:8080/path` is not treated as a scheme.
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(s)) return s;
+  if (/^(mailto|tel):/i.test(s)) return s;
+  return `https://${s}`;
+}
+
 /** First http(s) URL in text, used when note has no explicit url. */
 export function firstUrlInText(text: string): string | null {
   const match = text.match(/https?:\/\/[^\s<>"']+/i);
