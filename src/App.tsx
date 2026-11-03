@@ -14,6 +14,7 @@ import { WheaToolPage } from "./pages/WheaToolPage";
 import { SecurityPage } from "./pages/SecurityPage";
 import { InvPcrPage } from "./pages/InvPcrPage";
 import { WorkLogPage } from "./pages/WorkLogPage";
+import { TestReportsPage } from "./pages/TestReportsPage";
 import { AppToolbar } from "./components/AppToolbar";
 import { LoadingIndicator } from "./components/LoadingIndicator";
 import { PageLoadingGate, viewNeedsStoreBoot } from "./components/PageLoadingGate";
@@ -45,6 +46,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: "security", label: "Security", icon: "shield" },
       { id: "inv-pcr", label: "INV&PCR", icon: "clipboard" },
       { id: "work-log", label: "Work Log", icon: "list" },
+      { id: "test-reports", label: "Test Reports", icon: "file-check" },
     ],
   },
   {
@@ -121,6 +123,14 @@ function NavIcon({ name }: { name: string }) {
         <svg {...common}>
           <path d="M8 6h13M8 12h13M8 18h13" />
           <path d="M3 6h.01M3 12h.01M3 18h.01" />
+        </svg>
+      );
+    case "file-check":
+      return (
+        <svg {...common}>
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
+          <path d="M14 2v6h6" />
+          <path d="m9 15 2 2 4-4" />
         </svg>
       );
     case "book":
@@ -215,9 +225,17 @@ function Shell() {
   const isWhea = currentView === "whea";
   const isSecurity = currentView === "security";
   const isWorkLog = currentView === "work-log";
+  const isTestReports = currentView === "test-reports";
   const isToolChild = isOtp || isWhea;
   const hideChrome =
-    isProjectIssue || isPersonnel || isNotes || isChat || isToolChild || isSecurity || isWorkLog;
+    isProjectIssue ||
+    isPersonnel ||
+    isNotes ||
+    isChat ||
+    isToolChild ||
+    isSecurity ||
+    isWorkLog ||
+    isTestReports;
 
   const toggleGroup = (key: string) => {
     setOpenGroups((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -237,7 +255,7 @@ function Shell() {
 
   return (
     <div
-      className={`app shell${isProjectIssue ? " shell-pi" : ""}${isPersonnel ? " shell-personnel" : ""}${isNotes ? " shell-note" : ""}${isChat ? " shell-chat" : ""}${isOtp ? " shell-otp" : ""}${isWhea ? " shell-tool-detail" : ""}${isSecurity ? " shell-security" : ""}${isWorkLog ? " shell-work-log" : ""}${sidebarCollapsed ? " shell-sidebar-collapsed" : ""}`}
+      className={`app shell${isProjectIssue ? " shell-pi" : ""}${isPersonnel ? " shell-personnel" : ""}${isNotes ? " shell-note" : ""}${isChat ? " shell-chat" : ""}${isOtp ? " shell-otp" : ""}${isWhea ? " shell-tool-detail" : ""}${isSecurity ? " shell-security" : ""}${isWorkLog ? " shell-work-log" : ""}${isTestReports ? " shell-test-reports" : ""}${sidebarCollapsed ? " shell-sidebar-collapsed" : ""}`}
     >
       <aside
         className={`sidebar${sidebarCollapsed ? " is-collapsed" : ""}`}
@@ -382,7 +400,7 @@ function Shell() {
         )}
 
         <main
-          className={`page page-shell${isProjectIssue ? " page-pi" : ""}${isPersonnel ? " page-personnel" : ""}${isNotes ? " page-note" : ""}${isChat ? " page-chat" : ""}${isOtp ? " page-otp" : ""}${isWhea ? " page-tool-detail" : ""}${isSecurity ? " page-security" : ""}${isWorkLog ? " page-work-log" : ""}`}
+          className={`page page-shell${isProjectIssue ? " page-pi" : ""}${isPersonnel ? " page-personnel" : ""}${isNotes ? " page-note" : ""}${isChat ? " page-chat" : ""}${isOtp ? " page-otp" : ""}${isWhea ? " page-tool-detail" : ""}${isSecurity ? " page-security" : ""}${isWorkLog ? " page-work-log" : ""}${isTestReports ? " page-test-reports" : ""}`}
         >
           {viewNeedsStoreBoot(currentView) ? (
             <PageLoadingGate>
@@ -413,6 +431,9 @@ function Shell() {
               )}
               {currentView === "work-log" && (
                 <WorkLogPage onGoDashboard={() => setView("home")} />
+              )}
+              {currentView === "test-reports" && (
+                <TestReportsPage onGoDashboard={() => setView("home")} />
               )}
               {currentView === "gantt" && (
                 <Suspense

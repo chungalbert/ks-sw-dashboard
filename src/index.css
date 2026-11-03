@@ -463,7 +463,7 @@ a:hover { text-decoration: underline; }
 
 /* Full-bleed shells (PI / Personnel / Note / Chat / OTP / Tool detail) set their own padding: 0.
    Exclude them here — this selector's specificity would otherwise leave a 16px left gap. */
-.shell .page-shell:not(.page-pi):not(.page-personnel):not(.page-note):not(.page-chat):not(.page-otp):not(.page-tool-detail):not(.page-security):not(.page-work-log) {
+.shell .page-shell:not(.page-pi):not(.page-personnel):not(.page-note):not(.page-chat):not(.page-otp):not(.page-tool-detail):not(.page-security):not(.page-work-log):not(.page-test-reports) {
   padding: 0 16px 24px;
 }
 
@@ -7907,4 +7907,32 @@ input.sec-detail-date-input[type="date"]:invalid::-webkit-datetime-edit-day-fiel
 @media (max-width: 900px) {
   .wl-toolbar { align-items: flex-start; }
   .wl-search input { min-width: 120px; }
+}
+
+/* —— Test Reports (reuses Work Log table chrome) —— */
+.shell-test-reports .shell-main {
+  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
+}
+.shell-test-reports .page-test-reports {
+  padding: 0;
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #202124;
+  color: #e8eaed;
+}
+.tr-link-cell { min-width: 160px; }
+.tr-link-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.tr-open-link {
+  flex-shrink: 0;
+  font-size: 11px;
 }

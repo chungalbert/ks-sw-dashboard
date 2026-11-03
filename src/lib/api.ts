@@ -31,6 +31,8 @@ import {
   type ProjectMember,
   type Role,
   type Task,
+  type TestReport,
+  type TestReportPatch,
   type WorkLogEntry,
   type WorkLogEntryPatch,
 } from "./types";
@@ -806,5 +808,23 @@ export const api = {
   async deleteWorkLogEntry(id: string): Promise<void> {
     if (hasSupabaseConfig()) return cloudApi.deleteWorkLogEntry(id);
     localApi.deleteWorkLogEntry(id);
+  },
+
+  /** Test Reports — Admin/DM/DL/DE (Neon `test_reports`). */
+  async listTestReports(): Promise<TestReport[]> {
+    if (hasSupabaseConfig()) return cloudApi.listTestReports();
+    return localApi.listTestReports();
+  },
+  async createTestReport(partial: TestReportPatch = {}): Promise<TestReport> {
+    if (hasSupabaseConfig()) return cloudApi.createTestReport(partial);
+    return localApi.createTestReport(partial);
+  },
+  async updateTestReport(id: string, patch: TestReportPatch): Promise<TestReport> {
+    if (hasSupabaseConfig()) return cloudApi.updateTestReport(id, patch);
+    return localApi.updateTestReport(id, patch);
+  },
+  async deleteTestReport(id: string): Promise<void> {
+    if (hasSupabaseConfig()) return cloudApi.deleteTestReport(id);
+    localApi.deleteTestReport(id);
   },
 };

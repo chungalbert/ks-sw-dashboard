@@ -15,6 +15,7 @@ export type ViewId =
   | "security"
   | "inv-pcr"
   | "work-log"
+  | "test-reports"
   | "guides"
   | "notes"
   | "chat"
@@ -155,6 +156,11 @@ export function canViewWorkLog(role: PersonnelRole): boolean {
   return !isWorkspaceLimitedRole(role);
 }
 
+/** Test Reports: same elevated set as Work Log — Admin / DM / DL / DE (not DQA / PM / SA). */
+export function canViewTestReports(role: PersonnelRole): boolean {
+  return canViewWorkLog(role);
+}
+
 /**
  * Projects & Issues page elevated access (same as Admin for that page):
  * edit mode, columns, create/delete. Personnel Add Member/ACTIONS stay Admin-only.
@@ -238,6 +244,48 @@ export type WorkLogEntryPatch = Partial<{
   content: string;
   owner_id: string | null;
   done: boolean;
+  sort_order: number;
+}>;
+
+/** Spreadsheet Report Type column for Test Reports (expandable text). */
+export const TEST_REPORT_TYPES = ["Stress", "SIT", "Other"] as const;
+export type TestReportType = (typeof TEST_REPORT_TYPES)[number];
+
+export const TEST_REPORT_RESULTS = ["PASS", "Fail"] as const;
+export type TestReportResult = (typeof TEST_REPORT_RESULTS)[number];
+
+/** BIOS + OS / image test campaign cover report (WORKSPACE; not Security). */
+export interface TestReport {
+  id: string;
+  project_id: string | null;
+  /** Compal project name snapshot. */
+  project_name: string;
+  bios: string;
+  os_image: string;
+  report_type: TestReportType | (string & {}) | "";
+  link: string;
+  /** ISO date `YYYY-MM-DD`. */
+  report_date: string;
+  /** Free-text owner (who ran / owns the report). */
+  owner: string;
+  /** PASS / Fail; blank = in progress. Independent of Security IT Status. */
+  result: TestReportResult | "";
+  sort_order: number;
+  created_by?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export type TestReportPatch = Partial<{
+  project_id: string | null;
+  project_name: string;
+  bios: string;
+  os_image: string;
+  report_type: TestReportType | (string & {}) | "";
+  link: string;
+  report_date: string;
+  owner: string;
+  result: TestReportResult | "";
   sort_order: number;
 }>;
 
