@@ -10,6 +10,10 @@ const emptyMessages = path.resolve(rootDir, "src/shims/empty-ts-evtx-messages.ts
 export default defineConfig({
   plugins: [react()],
   base: process.env.GITHUB_ACTIONS ? "/ks-sw-dashboard/" : "/",
+  // @ts-evtx/core reads process.env.EVTX_DEBUG; browser has no process.
+  define: {
+    "process.env.EVTX_DEBUG": JSON.stringify(""),
+  },
   resolve: {
     alias: [
       { find: /^node:fs\/promises$/, replacement: emptyFs },
