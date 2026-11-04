@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { SavingIndicator } from "../components/SavingIndicator";
+import { WorkLogProjectPicker } from "../components/WorkLogProjectPicker";
 import { useAuth } from "../context/AuthContext";
 import { useStore } from "../context/StoreContext";
+import { PROJECT_COLUMNS_META_NAME } from "../lib/cloudApi";
 import {
   canViewWorkLog,
   normalizePersonnelRole,
@@ -23,6 +25,18 @@ import {
 import { workLogStore } from "../lib/workLogStore";
 
 type DateSort = "asc" | "desc";
+
+/** Stable display order: incomplete first, then Date, then sort_order, then id. */
+function compareWorkLogRows(a: WorkLogEntry, b: WorkLogEntry, dateSort: DateSort): number {
+  const byDone = Number(a.done) - Number(b.done);
+  if (byDone !== 0) return byDone;
+  const dir = dateSort === "asc" ? 1 : -1;
+  const byDate = a.entry_date.localeCompare(b.entry_date) * dir;
+  if (byDate !== 0) return byDate;
+  const bySort = (a.sort_order ?? 0) - (b.sort_order ?? 0);
+  if (bySort !== 0) return bySort;
+  return a.id.localeCompare(b.id);
+}
 
 function downloadBuffer(
   name: string,
@@ -72,7 +86,10 @@ export function WorkLogPage({ onGoDashboard }: { onGoDashboard?: () => void }) {
   );
 
   const projectOptions = useMemo(
-    () => [...projects].sort((a, b) => a.name.localeCompare(b.name, "en")),
+    () =>
+      [...projects]
+        .filter((p) => p.name !== PROJECT_COLUMNS_META_NAME)
+        .sort((a, b) => a.name.localeCompare(b.name, "en")),
     [projects],
   );
 
@@ -104,12 +121,9 @@ export function WorkLogPage({ onGoDashboard }: { onGoDashboard?: () => void }) {
         .toLowerCase();
       return hay.includes(q);
     });
-    const dir = dateSort === "asc" ? 1 : -1;
-    return [...filtered].sort((a, b) => {
-      const byDate = a.entry_date.localeCompare(b.entry_date) * dir;
-      if (byDate !== 0) return byDate;
-      return (a.sort_order ?? 0) - (b.sort_order ?? 0);
-    });
+    // Incomplete (unchecked) rows stay on top; done below. Within each group,
+    // Date + sort_order + id keep a stable order so field saves do not reshuffle.
+    return [...filtered].sort((a, b) => compareWorkLogRows(a, b, dateSort));
   }, [rows, typeFilter, query, people, dateSort]);
 
   const patchRow = async (id: string, patch: Parameters<typeof workLogStore.update>[1]) => {
@@ -119,6 +133,7 @@ export function WorkLogPage({ onGoDashboard }: { onGoDashboard?: () => void }) {
         const updated = await workLogStore.update(id, patch);
         // Merge server row with any in-flight local edits (e.g. 內容 typing) so a
         // concurrent Type/Project/Owner save does not clobber the content draft.
+        // Keep array identity order (map) — never re-sort `rows` on save.
         setRows((prev) =>
           prev.map((r) => {
             if (r.id !== id) return r;
@@ -139,6 +154,8 @@ export function WorkLogPage({ onGoDashboard }: { onGoDashboard?: () => void }) {
             }
             if (patch.owner_id === undefined) merged.owner_id = r.owner_id;
             if (patch.done === undefined) merged.done = r.done;
+            // Never let a field save rewrite display order keys.
+            if (patch.sort_order === undefined) merged.sort_order = r.sort_order;
             return merged;
           }),
         );
@@ -538,20 +555,13 @@ export function WorkLogPage({ onGoDashboard }: { onGoDashboard?: () => void }) {
                       ))}
                     </select>
                   </td>
-                  <td>
-                    <select
-                      className="wl-input"
+                  <td className="wl-col-project">
+                    <WorkLogProjectPicker
                       value={row.project_id ?? ""}
+                      options={projectOptions}
                       aria-label="Project"
-                      onChange={(e) => void onProjectChange(row, e.target.value)}
-                    >
-                      <option value="">—</option>
-                      {projectOptions.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={(projectId) => void onProjectChange(row, projectId)}
+                    />
                   </td>
                   <td className="wl-product" title={row.product_name || undefined}>
                     {row.product_name || "—"}
