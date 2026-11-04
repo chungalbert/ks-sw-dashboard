@@ -247,6 +247,74 @@ function resolveProject(
   return { error: `Project “${t}” not found` };
 }
 
+function ownerLabel(ownerId: string | null, profiles: Profile[]): string {
+  if (!ownerId) return "";
+  const p = profiles.find((x) => x.id === ownerId);
+  return p ? p.display_name || p.username || "" : "";
+}
+
+/** Flat row values matching visible Work Log columns (no Actions). */
+export function workLogExportCells(
+  entry: WorkLogEntry,
+  profiles: Profile[],
+): Record<WorkLogBulkHeader, string> {
+  return {
+    entry_date: entry.entry_date ?? "",
+    entry_type: entry.entry_type ?? "",
+    project_name: entry.project_name ?? "",
+    product_name: entry.product_name ?? "",
+    content: entry.content ?? "",
+    owner: ownerLabel(entry.owner_id, profiles),
+    done: entry.done ? "TRUE" : "FALSE",
+  };
+}
+
+/** Download the currently visible table as .xlsx (same headers as UI / sample). */
+export async function buildWorkLogExportXlsx(
+  entries: WorkLogEntry[],
+  profiles: Profile[],
+): Promise<ArrayBuffer> {
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "KSSW";
+  wb.created = new Date();
+
+  const sheet = wb.addWorksheet("Work Log", {
+    views: [{ state: "frozen", ySplit: 1 }],
+  });
+  WORK_LOG_BULK_HEADERS.forEach((h, i) => {
+    const cell = sheet.getCell(1, i + 1);
+    cell.value = WORK_LOG_BULK_LABELS[h];
+    cell.font = { bold: true };
+    sheet.getColumn(i + 1).width = h === "content" ? 36 : h === "product_name" ? 22 : 16;
+  });
+
+  entries.forEach((entry, idx) => {
+    const cells = workLogExportCells(entry, profiles);
+    WORK_LOG_BULK_HEADERS.forEach((h, i) => {
+      sheet.getCell(idx + 2, i + 1).value = cells[h];
+    });
+  });
+
+  const buf = await wb.xlsx.writeBuffer();
+  return buf as ArrayBuffer;
+}
+
+/** CSV twin of {@link buildWorkLogExportXlsx} — same visible columns. */
+export function buildWorkLogExportCsv(entries: WorkLogEntry[], profiles: Profile[]): string {
+  const escape = (v: string) => {
+    if (/[",\n\r]/.test(v)) return `"${v.replace(/"/g, '""')}"`;
+    return v;
+  };
+  const lines = [
+    WORK_LOG_BULK_HEADERS.map((h) => escape(WORK_LOG_BULK_LABELS[h])).join(","),
+    ...entries.map((entry) => {
+      const cells = workLogExportCells(entry, profiles);
+      return WORK_LOG_BULK_HEADERS.map((h) => escape(cells[h])).join(",");
+    }),
+  ];
+  return `\uFEFF${lines.join("\r\n")}`;
+}
+
 export async function buildWorkLogBulkTemplate(): Promise<ArrayBuffer> {
   const wb = new ExcelJS.Workbook();
   wb.creator = "KSSW";
