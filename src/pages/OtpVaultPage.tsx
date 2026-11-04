@@ -1,7 +1,16 @@
-import { FormEvent, type MouseEvent, useEffect, useMemo, useState } from "react";
+import {
+  FormEvent,
+  type ChangeEvent,
+  type MouseEvent,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { SavingIndicator } from "../components/SavingIndicator";
 import { SharedStoreBanner } from "../components/SharedStoreBanner";
 import { copyTextToClipboard } from "../lib/clipboard";
+import { decodeQrFromFile, decodeQrFromImageData } from "../lib/otpQr";
 import { otpVaultStore } from "../lib/otpVaultStore";
 import { formatCode, generateTotp, parseOtpInput, totpRemaining } from "../lib/totp";
 import type { OtpVaultEntry } from "../lib/types";
@@ -13,6 +22,7 @@ type AddForm = {
   issuer: string;
   account: string;
   access_password: string;
+  thumb?: string;
 };
 
 const EMPTY_FORM: AddForm = {
@@ -21,7 +31,17 @@ const EMPTY_FORM: AddForm = {
   issuer: "",
   account: "",
   access_password: "",
+  thumb: undefined,
 };
+
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Could not read image preview."));
+    reader.readAsDataURL(file);
+  });
+}
 
 export function OtpVaultPage({
   onGoDashboard,
@@ -35,11 +55,19 @@ export function OtpVaultPage({
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState<AddForm>(EMPTY_FORM);
   const [error, setError] = useState("");
+  const [qrStatus, setQrStatus] = useState("");
+  const [qrBusy, setQrBusy] = useState(false);
+  const [scanning, setScanning] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   /** Session unlocks: entryId → true after correct access_password. */
   const [unlocked, setUnlocked] = useState<Record<string, boolean>>({});
   const [unlockDraft, setUnlockDraft] = useState<Record<string, string>>({});
   const { saveStatus, runSave } = useSaveStatus();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const scanCanvasRef = useRef<HTMLCanvasElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const scanRafRef = useRef<number | null>(null);
 
   const refresh = async () => {
     setEntries(await otpVaultStore.list());
@@ -54,7 +82,131 @@ export function OtpVaultPage({
     return () => window.clearInterval(id);
   }, []);
 
+  const stopCamera = () => {
+    if (scanRafRef.current != null) {
+      cancelAnimationFrame(scanRafRef.current);
+      scanRafRef.current = null;
+    }
+    const stream = streamRef.current;
+    if (stream) {
+      for (const track of stream.getTracks()) track.stop();
+      streamRef.current = null;
+    }
+    const video = videoRef.current;
+    if (video) video.srcObject = null;
+    setScanning(false);
+  };
+
+  useEffect(() => {
+    if (!showAdd) stopCamera();
+    return () => stopCamera();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- stop only when modal closes / unmount
+  }, [showAdd]);
+
   const remaining = useMemo(() => totpRemaining(30), [tick]);
+
+  const applyParsedQr = (raw: string, thumb?: string) => {
+    const parsed = parseOtpInput(raw);
+    setForm((f) => ({
+      ...f,
+      paste: parsed.qr_text || raw,
+      issuer: f.issuer.trim() || parsed.issuer,
+      account: f.account.trim() || parsed.account,
+      label: f.label.trim() || parsed.label,
+      thumb: thumb || f.thumb,
+    }));
+    setQrStatus("QR decoded — review fields and Save.");
+    setError("");
+  };
+
+  const onQrFile = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setQrBusy(true);
+    setQrStatus("Reading QR…");
+    setError("");
+    try {
+      const [raw, thumb] = await Promise.all([decodeQrFromFile(file), fileToDataUrl(file)]);
+      stopCamera();
+      applyParsedQr(raw, thumb.startsWith("data:image/") ? thumb : undefined);
+    } catch (err) {
+      setQrStatus("");
+      setError(err instanceof Error ? err.message : "Could not read QR image");
+    } finally {
+      setQrBusy(false);
+    }
+  };
+
+  const tickScanFrame = () => {
+    const video = videoRef.current;
+    const canvas = scanCanvasRef.current;
+    if (!video || !canvas || video.readyState < 2) {
+      scanRafRef.current = requestAnimationFrame(tickScanFrame);
+      return;
+    }
+    const w = video.videoWidth;
+    const h = video.videoHeight;
+    if (w > 0 && h > 0) {
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      if (ctx) {
+        ctx.drawImage(video, 0, 0, w, h);
+        const text = decodeQrFromImageData(ctx.getImageData(0, 0, w, h));
+        if (text) {
+          try {
+            applyParsedQr(text);
+            stopCamera();
+            return;
+          } catch (err) {
+            setError(err instanceof Error ? err.message : "Invalid QR payload");
+            setQrStatus("");
+          }
+        }
+      }
+    }
+    scanRafRef.current = requestAnimationFrame(tickScanFrame);
+  };
+
+  const startCamera = async () => {
+    setError("");
+    setQrStatus("Starting camera…");
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new Error("Camera is not available in this browser — upload a QR image or paste otpauth://.");
+      }
+      stopCamera();
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: { facingMode: { ideal: "environment" } },
+      });
+      streamRef.current = stream;
+      setScanning(true);
+      setQrStatus("Point the camera at an otpauth QR…");
+      const video = videoRef.current;
+      if (video) {
+        video.srcObject = stream;
+        await video.play();
+      }
+      scanRafRef.current = requestAnimationFrame(tickScanFrame);
+    } catch (err) {
+      stopCamera();
+      setQrStatus("");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Camera permission denied — upload a QR image or paste otpauth://.",
+      );
+    }
+  };
+
+  const closeAdd = () => {
+    stopCamera();
+    setShowAdd(false);
+    setQrStatus("");
+    setForm(EMPTY_FORM);
+  };
 
   const onAdd = async (event: FormEvent) => {
     event.preventDefault();
@@ -69,10 +221,13 @@ export function OtpVaultPage({
           account: form.account.trim() || parsed.account,
           label: form.label.trim() || parsed.label,
           access_password: form.access_password.trim() || undefined,
+          thumb: form.thumb,
           owner_id: ownerId,
         });
         setForm(EMPTY_FORM);
+        setQrStatus("");
         setShowAdd(false);
+        stopCamera();
         await refresh();
       });
     } catch (err) {
@@ -148,7 +303,15 @@ export function OtpVaultPage({
         </nav>
         <div className="otp-toolbar-actions">
           <SavingIndicator status={saveStatus} />
-          <button type="button" className="otp-add-btn" onClick={() => { setShowAdd(true); setError(""); }}>
+          <button
+            type="button"
+            className="otp-add-btn"
+            onClick={() => {
+              setShowAdd(true);
+              setError("");
+              setQrStatus("");
+            }}
+          >
             + Add
           </button>
         </div>
@@ -258,14 +421,53 @@ export function OtpVaultPage({
       </div>
 
       {showAdd && (
-        <div className="otp-modal-backdrop" onClick={() => setShowAdd(false)}>
+        <div className="otp-modal-backdrop" onClick={closeAdd}>
           <form
             className="otp-modal"
             onSubmit={onAdd}
             onClick={(e) => e.stopPropagation()}
           >
             <h2>Add OTP</h2>
-            <p className="otp-hint">Paste a Base32 secret or an otpauth:// URI. Secrets stay in this browser only.</p>
+            <p className="otp-hint">
+              Prefer scan or upload an otpauth:// TOTP QR. Paste a Base32 secret or otpauth URI as fallback.
+            </p>
+
+            <div className="otp-qr-actions">
+              <button
+                type="button"
+                className="otp-btn-secondary"
+                disabled={qrBusy}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                Upload QR
+              </button>
+              <button
+                type="button"
+                className="otp-btn-secondary"
+                disabled={qrBusy}
+                onClick={() => void (scanning ? stopCamera() : startCamera())}
+              >
+                {scanning ? "Stop camera" : "Scan camera"}
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                hidden
+                onChange={(e) => void onQrFile(e)}
+              />
+            </div>
+
+            {scanning && (
+              <div className="otp-scan-panel">
+                <video ref={videoRef} className="otp-scan-video" playsInline muted autoPlay />
+                <canvas ref={scanCanvasRef} className="otp-scan-canvas" aria-hidden="true" />
+              </div>
+            )}
+
+            {qrStatus && <p className="otp-qr-status">{qrStatus}</p>}
+
             <label className="otp-field">
               <span>Secret / otpauth URI</span>
               <textarea
@@ -274,7 +476,7 @@ export function OtpVaultPage({
                 onChange={(e) => setForm((f) => ({ ...f, paste: e.target.value }))}
                 placeholder="otpauth://totp/… or BASE32SECRET"
                 required
-                autoFocus
+                autoFocus={!scanning}
               />
             </label>
             <div className="otp-field-row">
@@ -315,10 +517,10 @@ export function OtpVaultPage({
             </label>
             {error && <p className="otp-error">{error}</p>}
             <div className="otp-modal-actions">
-              <button type="button" className="otp-btn-ghost" onClick={() => setShowAdd(false)}>
+              <button type="button" className="otp-btn-ghost" onClick={closeAdd}>
                 Cancel
               </button>
-              <button type="submit" className="otp-btn-primary">
+              <button type="submit" className="otp-btn-primary" disabled={qrBusy}>
                 Save
               </button>
             </div>
