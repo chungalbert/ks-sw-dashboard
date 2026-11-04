@@ -7904,6 +7904,30 @@ input.sec-detail-date-input[type="date"]:invalid::-webkit-datetime-edit-day-fiel
   padding: 6px 8px;
   vertical-align: middle;
 }
+.wl-sort-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+.wl-sort-btn:hover,
+.wl-sort-btn:focus-visible {
+  color: #8ab4f8;
+  outline: none;
+}
+.wl-sort-ind {
+  font-size: 0.85em;
+  opacity: 0.85;
+}
 .wl-table thead th {
   position: sticky;
   top: 0;

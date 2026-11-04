@@ -12,6 +12,8 @@ import {
 import { useSaveStatus } from "../lib/useSaveStatus";
 import {
   buildWorkLogBulkTemplate,
+  buildWorkLogExportCsv,
+  buildWorkLogExportXlsx,
   fingerprintFromEntry,
   loadWorkLogBulkWorkbook,
   parseWorkLogBulkWorkbook,
@@ -20,10 +22,24 @@ import {
 } from "../lib/workLogBulk";
 import { workLogStore } from "../lib/workLogStore";
 
-function downloadBuffer(name: string, buffer: ArrayBuffer) {
-  const blob = new Blob([buffer], {
-    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  });
+type DateSort = "asc" | "desc";
+
+function downloadBuffer(
+  name: string,
+  buffer: ArrayBuffer,
+  mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+) {
+  const blob = new Blob([buffer], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function downloadText(name: string, text: string, mime: string) {
+  const blob = new Blob([text], { type: mime });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -41,6 +57,7 @@ export function WorkLogPage({ onGoDashboard }: { onGoDashboard?: () => void }) {
   const [error, setError] = useState("");
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [query, setQuery] = useState("");
+  const [dateSort, setDateSort] = useState<DateSort>("desc");
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkResult, setBulkResult] = useState<WorkLogBulkCreateResult | null>(null);
   const bulkFileRef = useRef<HTMLInputElement>(null);
@@ -72,7 +89,7 @@ export function WorkLogPage({ onGoDashboard }: { onGoDashboard?: () => void }) {
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return rows.filter((row) => {
+    const filtered = rows.filter((row) => {
       if (typeFilter !== "all" && row.entry_type !== typeFilter) return false;
       if (!q) return true;
       const hay = [
@@ -87,7 +104,13 @@ export function WorkLogPage({ onGoDashboard }: { onGoDashboard?: () => void }) {
         .toLowerCase();
       return hay.includes(q);
     });
-  }, [rows, typeFilter, query, people]);
+    const dir = dateSort === "asc" ? 1 : -1;
+    return [...filtered].sort((a, b) => {
+      const byDate = a.entry_date.localeCompare(b.entry_date) * dir;
+      if (byDate !== 0) return byDate;
+      return (a.sort_order ?? 0) - (b.sort_order ?? 0);
+    });
+  }, [rows, typeFilter, query, people, dateSort]);
 
   const patchRow = async (id: string, patch: Parameters<typeof workLogStore.update>[1]) => {
     setError("");
@@ -179,6 +202,37 @@ export function WorkLogPage({ onGoDashboard }: { onGoDashboard?: () => void }) {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Download sample failed");
     }
+  };
+
+  const onDownloadTableExcel = async () => {
+    if (!allowed) return;
+    setError("");
+    try {
+      downloadBuffer(
+        "kssw-work-log-export.xlsx",
+        await buildWorkLogExportXlsx(visible, profiles),
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Download Excel failed");
+    }
+  };
+
+  const onDownloadTableCsv = () => {
+    if (!allowed) return;
+    setError("");
+    try {
+      downloadText(
+        "kssw-work-log-export.csv",
+        buildWorkLogExportCsv(visible, profiles),
+        "text/csv;charset=utf-8",
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Download CSV failed");
+    }
+  };
+
+  const toggleDateSort = () => {
+    setDateSort((prev) => (prev === "asc" ? "desc" : "asc"));
   };
 
   const onBulkExcelSelected = async (file: File | null) => {
@@ -298,6 +352,24 @@ export function WorkLogPage({ onGoDashboard }: { onGoDashboard?: () => void }) {
           <button
             type="button"
             className="pi-add-col"
+            disabled={bulkBusy || visible.length === 0}
+            title="Download visible Work Log rows as Excel (same columns as table)"
+            onClick={() => void onDownloadTableExcel()}
+          >
+            Download Excel
+          </button>
+          <button
+            type="button"
+            className="pi-add-col"
+            disabled={bulkBusy || visible.length === 0}
+            title="Download visible Work Log rows as CSV (same columns as table)"
+            onClick={onDownloadTableCsv}
+          >
+            Download CSV
+          </button>
+          <button
+            type="button"
+            className="pi-add-col"
             disabled={bulkBusy}
             title="Download Excel sample for bulk create"
             onClick={() => void onDownloadBulkSample()}
@@ -397,7 +469,28 @@ export function WorkLogPage({ onGoDashboard }: { onGoDashboard?: () => void }) {
         <table className="wl-table">
           <thead>
             <tr>
-              <th scope="col">Date</th>
+              <th scope="col" aria-sort={dateSort === "asc" ? "ascending" : "descending"}>
+                <button
+                  type="button"
+                  className="wl-sort-btn"
+                  onClick={toggleDateSort}
+                  title={
+                    dateSort === "asc"
+                      ? "Sorted by Date ascending — click for descending"
+                      : "Sorted by Date descending — click for ascending"
+                  }
+                  aria-label={
+                    dateSort === "asc"
+                      ? "Date, sorted ascending. Activate to sort descending"
+                      : "Date, sorted descending. Activate to sort ascending"
+                  }
+                >
+                  Date
+                  <span className="wl-sort-ind" aria-hidden="true">
+                    {dateSort === "asc" ? " ↑" : " ↓"}
+                  </span>
+                </button>
+              </th>
               <th scope="col">Type</th>
               <th scope="col">Project</th>
               <th scope="col">Product Name</th>
