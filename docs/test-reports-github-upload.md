@@ -2,6 +2,8 @@
 
 Report files (pdf / xlsx / zip / …) are committed into this repo with the **GitHub Contents API**, not only as an external URL.
 
+**UI flow:** project card grid → open a project → add/manage that project’s reports (upload still uses the paths below).
+
 ## Paths
 
 | What | Value |
