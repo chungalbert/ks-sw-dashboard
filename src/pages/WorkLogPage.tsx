@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { SavingIndicator } from "../components/SavingIndicator";
 import { useAuth } from "../context/AuthContext";
 import { useStore } from "../context/StoreContext";
@@ -10,7 +10,27 @@ import {
   type WorkLogType,
 } from "../lib/types";
 import { useSaveStatus } from "../lib/useSaveStatus";
+import {
+  buildWorkLogBulkTemplate,
+  fingerprintFromEntry,
+  loadWorkLogBulkWorkbook,
+  parseWorkLogBulkWorkbook,
+  type WorkLogBulkCreateResult,
+  type WorkLogBulkRowError,
+} from "../lib/workLogBulk";
 import { workLogStore } from "../lib/workLogStore";
+
+function downloadBuffer(name: string, buffer: ArrayBuffer) {
+  const blob = new Blob([buffer], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 export function WorkLogPage({ onGoDashboard }: { onGoDashboard?: () => void }) {
   const { user } = useAuth();
@@ -21,6 +41,9 @@ export function WorkLogPage({ onGoDashboard }: { onGoDashboard?: () => void }) {
   const [error, setError] = useState("");
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [query, setQuery] = useState("");
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkResult, setBulkResult] = useState<WorkLogBulkCreateResult | null>(null);
+  const bulkFileRef = useRef<HTMLInputElement>(null);
   const { saveStatus, runSave } = useSaveStatus();
 
   const people = useMemo(
@@ -148,6 +171,81 @@ export function WorkLogPage({ onGoDashboard }: { onGoDashboard?: () => void }) {
     });
   };
 
+  const onDownloadBulkSample = async () => {
+    if (!allowed) return;
+    setError("");
+    try {
+      downloadBuffer("kssw-work-log-bulk-sample.xlsx", await buildWorkLogBulkTemplate());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Download sample failed");
+    }
+  };
+
+  const onBulkExcelSelected = async (file: File | null) => {
+    if (bulkFileRef.current) bulkFileRef.current.value = "";
+    if (!allowed || !file) return;
+    if (!/\.xlsx?$/i.test(file.name)) {
+      setError("Please upload an Excel file (.xlsx)");
+      return;
+    }
+    setError("");
+    setBulkBusy(true);
+    setBulkResult(null);
+    try {
+      const workbook = await loadWorkLogBulkWorkbook(await file.arrayBuffer());
+      const latest = await workLogStore.list();
+      const parsed = parseWorkLogBulkWorkbook(workbook, latest, projects, profiles);
+      const created: WorkLogBulkCreateResult["created"] = [];
+      const errors: WorkLogBulkRowError[] = [...parsed.errors];
+      const known = new Set(latest.map(fingerprintFromEntry));
+
+      await runSave(async () => {
+        for (const item of parsed.valid) {
+          if (known.has(item.fingerprint)) {
+            errors.push({
+              row: item.row,
+              entry_date: item.patch.entry_date,
+              project_name: item.patch.project_name,
+              content: item.patch.content,
+              reason:
+                "Matching Work Log row already exists (Date + Type + Project + 內容 + Owner) — skipped (no overwrite)",
+            });
+            continue;
+          }
+          try {
+            const row = await workLogStore.create(item.patch);
+            known.add(item.fingerprint);
+            created.push({
+              row: item.row,
+              id: row.id,
+              entry_date: row.entry_date,
+              content: row.content,
+            });
+          } catch (err) {
+            errors.push({
+              row: item.row,
+              entry_date: item.patch.entry_date,
+              project_name: item.patch.project_name,
+              content: item.patch.content,
+              reason: err instanceof Error ? err.message : "Create failed",
+            });
+          }
+        }
+        await refresh();
+      });
+
+      setBulkResult({
+        created,
+        errors: errors.sort((a, b) => a.row - b.row),
+        attempted: parsed.valid.length + parsed.errors.length,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Excel upload failed");
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
   if (!allowed) {
     return (
       <section className="wl-page">
@@ -176,6 +274,7 @@ export function WorkLogPage({ onGoDashboard }: { onGoDashboard?: () => void }) {
           <span className="wl-bc-current">Work Log</span>
         </nav>
         <div className="wl-toolbar-actions">
+          <SavingIndicator status={saveStatus} />
           <label className="wl-filter">
             <span>Type</span>
             <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
@@ -196,6 +295,32 @@ export function WorkLogPage({ onGoDashboard }: { onGoDashboard?: () => void }) {
               aria-label="Search Work Log"
             />
           </label>
+          <button
+            type="button"
+            className="pi-add-col"
+            disabled={bulkBusy}
+            title="Download Excel sample for bulk create"
+            onClick={() => void onDownloadBulkSample()}
+          >
+            Excel sample
+          </button>
+          <button
+            type="button"
+            className="pi-add-col"
+            disabled={bulkBusy}
+            title="Upload Excel to create Work Log rows (Admin / DM / DL / DE)"
+            onClick={() => bulkFileRef.current?.click()}
+          >
+            {bulkBusy ? "Uploading…" : "Upload Excel"}
+          </button>
+          <input
+            ref={bulkFileRef}
+            type="file"
+            accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            className="wl-bulk-file"
+            aria-label="Upload Work Log Excel"
+            onChange={(e) => void onBulkExcelSelected(e.target.files?.[0] ?? null)}
+          />
           <button type="button" className="pi-btn-primary" onClick={() => void onAdd()}>
             + Add row
           </button>
@@ -203,7 +328,70 @@ export function WorkLogPage({ onGoDashboard }: { onGoDashboard?: () => void }) {
       </div>
 
       {error && <p className="wl-error">{error}</p>}
-      <SavingIndicator status={saveStatus} />
+
+      {bulkResult && (
+        <div className="pi-bulk-backdrop" role="presentation" onClick={() => setBulkResult(null)}>
+          <div
+            className="pi-bulk-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="wl-bulk-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <header className="pi-bulk-head">
+              <h2 id="wl-bulk-title">Excel bulk create</h2>
+              <button
+                type="button"
+                className="pi-bulk-close"
+                aria-label="Close"
+                onClick={() => setBulkResult(null)}
+              >
+                ×
+              </button>
+            </header>
+            <div className="pi-bulk-body">
+              <p>
+                Created <strong>{bulkResult.created.length}</strong>
+                {bulkResult.errors.length > 0 ? (
+                  <>
+                    {" "}
+                    · <strong className="pi-bulk-err">{bulkResult.errors.length}</strong> row
+                    {bulkResult.errors.length === 1 ? "" : "s"} skipped / failed
+                  </>
+                ) : (
+                  <> · no row errors</>
+                )}
+                . Existing Work Log rows were not overwritten.
+              </p>
+              {bulkResult.created.length > 0 && (
+                <ul className="pi-bulk-list">
+                  {bulkResult.created.map((c) => (
+                    <li key={c.id}>
+                      Row {c.row}: {c.entry_date}
+                      {c.content ? ` — ${c.content.slice(0, 60)}${c.content.length > 60 ? "…" : ""}` : ""}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {bulkResult.errors.length > 0 && (
+                <ul className="pi-bulk-list is-errors">
+                  {bulkResult.errors.map((e, i) => (
+                    <li key={`${e.row}-${i}`}>
+                      Row {e.row}
+                      {e.entry_date ? ` (${e.entry_date})` : ""}: {e.reason}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <footer className="pi-bulk-foot">
+              <button type="button" className="pi-btn-primary" onClick={() => setBulkResult(null)}>
+                Close
+              </button>
+            </footer>
+          </div>
+        </div>
+      )}
 
       <div className="wl-table-wrap">
         <table className="wl-table">
@@ -223,7 +411,7 @@ export function WorkLogPage({ onGoDashboard }: { onGoDashboard?: () => void }) {
             {visible.length === 0 ? (
               <tr>
                 <td colSpan={8} className="wl-empty">
-                  No Work Log rows yet. Click + Add row.
+                  No Work Log rows yet. Click + Add row or upload Excel.
                 </td>
               </tr>
             ) : (
